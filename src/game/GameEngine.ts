@@ -176,6 +176,15 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Add active/inactive indicator
+    if (tile.isActive === false) {
+      // Add a red X or inactive indicator
+      this.add.text(pixel.x + 15, pixel.y - 15, '❌', {
+        fontSize: '12px',
+        align: 'center'
+      }).setOrigin(0.5).setDepth(1005);
+    }
+
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
       tile.players.forEach((player, index) => {

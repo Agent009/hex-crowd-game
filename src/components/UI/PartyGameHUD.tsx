@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers } from '../../store/gameSlice';
+import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers, setCurrentPlayer } from '../../store/gameSlice';
+import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import {
   Users,
@@ -13,7 +14,9 @@ import {
   Crown,
   Play,
   Pause,
-  Package
+  Package,
+  TestTube,
+  UserCheck
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -21,15 +24,18 @@ export const PartyGameHUD: React.FC = () => {
   const {
     players,
     teams,
+    currentPlayer,
     gameMode,
     gameTimer,
     roundNumber,
     showGrid,
-    showPlayerNumbers
+    showPlayerNumbers,
+    playerStats
   } = useSelector((state: RootState) => state.game);
 
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
+  const [showTestControls, setShowTestControls] = useState(false);
 
   // Game timer effect
   useEffect(() => {
@@ -54,6 +60,10 @@ export const PartyGameHUD: React.FC = () => {
 
   const togglePause = () => {
     setIsGamePaused(!isGamePaused);
+  };
+
+  const handlePlayerSelect = (playerId: string) => {
+    dispatch(setCurrentPlayer({ playerId }));
   };
 
   // Get top teams by score
@@ -102,16 +112,16 @@ export const PartyGameHUD: React.FC = () => {
           {sortedTeams.map((team, index) => (
             <div key={team.id} className="flex items-center space-x-2">
               <div className="flex items-center space-x-1">
-                <Trophy 
+                <Trophy
                   className={`w-4 h-4 ${
                     index === 0 ? 'text-yellow-400' : 
                     index === 1 ? 'text-gray-400' : 
                     'text-amber-600'
-                  }`} 
+                  }`}
                 />
                 <span className="text-white text-sm font-semibold">#{index + 1}</span>
               </div>
-              <div 
+              <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: team.color }}
               />
@@ -159,6 +169,20 @@ export const PartyGameHUD: React.FC = () => {
             <Package className="w-5 h-5" />
           </button>
 
+          {isTestMode && (
+            <button
+              onClick={() => setShowTestControls(!showTestControls)}
+              className={`p-2 rounded-lg transition-colors ${
+                showTestControls 
+                  ? 'bg-orange-600 text-white' 
+                  : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+              }`}
+              title="Test Mode Controls"
+            >
+              <TestTube className="w-5 h-5" />
+            </button>
+          )}
+
           <button
             onClick={togglePause}
             className={`p-2 rounded-lg transition-colors ${
@@ -195,7 +219,7 @@ export const PartyGameHUD: React.FC = () => {
             <div className="flex items-center space-x-2">
               {teams.filter(t => t.playerIds.length > 0).map(team => (
                 <div key={team.id} className="flex items-center space-x-1">
-                  <div 
+                  <div
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: team.color }}
                   />
@@ -204,6 +228,20 @@ export const PartyGameHUD: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {currentPlayer && (
+            <div className="flex items-center space-x-2 bg-blue-900 px-3 py-1 rounded">
+              <UserCheck className="w-4 h-4 text-blue-400" />
+              <span className="text-blue-200 text-sm">
+                Playing as: {currentPlayer.name} (#{currentPlayer.number})
+              </span>
+              {playerStats[currentPlayer.id] && (
+                <span className="text-blue-300 text-sm">
+                  • {playerStats[currentPlayer.id].actionPoints} AP
+                </span>
+              )}
+            </div>
+          )}
 
           {isGamePaused && (
             <div className="flex items-center space-x-2 bg-yellow-900 px-3 py-1 rounded">
@@ -216,6 +254,58 @@ export const PartyGameHUD: React.FC = () => {
 
       {/* Harvest Grid */}
       {showHarvestGrid && <HarvestGrid />}
+
+      {/* Test Mode Controls */}
+      {isTestMode && showTestControls && (
+        <div className="bg-orange-900 border-t border-orange-600 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-orange-200 font-semibold flex items-center">
+              <TestTube className="w-4 h-4 mr-2" />
+              Test Mode Controls
+            </h3>
+            <button
+              onClick={() => setShowTestControls(false)}
+              className="text-orange-400 hover:text-orange-300"
+            >
+              ×
+            </button>
+          </div>
+
+          <div>
+            <div className="text-orange-300 text-sm mb-2">Select Player to Control:</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {players.map(player => (
+                <button
+                  key={player.id}
+                  onClick={() => handlePlayerSelect(player.id)}
+                  className={`p-2 rounded text-xs font-medium transition-colors ${
+                    currentPlayer?.id === player.id
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-orange-800 text-orange-200 hover:bg-orange-700'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: '#DC2626' }}
+                    >
+                      <span className="text-white text-xs font-bold">
+                        {player.number}
+                      </span>
+                    </div>
+                    <span>{player.name}</span>
+                  </div>
+                  {playerStats[player.id] && (
+                    <div className="text-xs opacity-75">
+                      {playerStats[player.id].actionPoints} AP
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

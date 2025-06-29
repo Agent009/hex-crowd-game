@@ -26,6 +26,7 @@ export interface HexTile {
   visible: boolean;
   fogLevel: number; // 0 = unexplored, 1 = visible, 2 = explored
   players?: Player[]; // Players on this tile
+  isActive?: boolean; // Can this tile be harvested from
 }
 
 export type GridSystem = "topDown" | "isometric";

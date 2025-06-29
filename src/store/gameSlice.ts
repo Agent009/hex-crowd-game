@@ -28,12 +28,29 @@ export interface GameState {
   gameTimer: number;
   roundNumber: number;
 
+  // Player stats for party game
+  playerStats: { [playerId: string]: PlayerStats };
+
+  // Tile states
+  activeTiles: string[]; // Tiles that can be harvested from
+
   // UI state
   showGrid: boolean;
   cameraPosition: { x: number; y: number };
   zoomLevel: number;
   showPlayerNumbers: boolean;
 }
+
+export interface PlayerStats {
+  hp: number;
+  actionPoints: number;
+  coins: number;
+  resources: { [resourceId: string]: number };
+  items: ItemData[];
+  crests: number;
+}
+
+import { ItemData } from '../data/harvestData';
 
 const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
   const tiles: { [key: string]: HexTile } = {};
@@ -54,6 +71,7 @@ const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
       explored: true, // All tiles visible in party game
       visible: true,
       fogLevel: 2, // No fog of war in party game
+      isActive: true, // All tiles start as active
     };
   });
 
@@ -86,6 +104,9 @@ const initialState: GameState = {
   currentPlayer: null,
   gameTimer: 0,
   roundNumber: 1,
+
+  playerStats: {},
+  activeTiles: Object.keys(generatePartyGameWorld(gameSize)),
 
   showGrid: true,
   cameraPosition: { x: 0, y: 0 },
@@ -147,6 +168,16 @@ const gameSlice = createSlice({
         state.tiles[tileKey].players!.push(newPlayer);
       }
 
+      // Initialize player stats
+      state.playerStats[newPlayer.id] = {
+        hp: 10,
+        actionPoints: 0, // Will get +2 AP at start of each round
+        coins: 0,
+        resources: {},
+        items: [],
+        crests: 0
+      };
+
       // Set as current player if first to join
       if (!state.currentPlayer) {
         state.currentPlayer = newPlayer;
@@ -176,6 +207,9 @@ const gameSlice = createSlice({
       // Remove player
       state.players.splice(playerIndex, 1);
 
+      // Remove player stats
+      delete state.playerStats[playerId];
+
       // Update current player if needed
       if (state.currentPlayer?.id === playerId) {
         state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
@@ -204,6 +238,13 @@ const gameSlice = createSlice({
         state.gameMode = 'playing';
         state.gameTimer = 0;
         state.roundNumber = 1;
+
+        // Give all players +2 AP to start
+        state.players.forEach(player => {
+          if (state.playerStats[player.id]) {
+            state.playerStats[player.id].actionPoints += 2;
+          }
+        });
       }
     },
 
@@ -219,7 +260,7 @@ const gameSlice = createSlice({
     movePlayer: (state, action: PayloadAction<{ playerId: string; target: CubeCoords }>) => {
       const { playerId, target } = action.payload;
       const player = state.players.find(p => p.id === playerId);
-      
+
       if (!player) return;
 
       // Remove player from current tile
@@ -247,6 +288,66 @@ const gameSlice = createSlice({
 
     nextRound: (state) => {
       state.roundNumber += 1;
+
+      // Give all players +2 AP at start of each round
+      state.players.forEach(player => {
+        if (state.playerStats[player.id]) {
+          state.playerStats[player.id].actionPoints += 2;
+        }
+      });
+    },
+
+    // Harvesting mechanics
+    harvestFromTile: (state, action: PayloadAction<{
+      playerId: string;
+      tileCoords: CubeCoords;
+      resourceId?: string;
+      itemId?: string;
+      isItem: boolean;
+    }>) => {
+      const { playerId, tileCoords, resourceId, itemId, isItem } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
+      const tileKey = coordsToKey(tileCoords);
+      const tile = state.tiles[tileKey];
+
+      if (!player || !playerStats || !tile) return;
+
+      // Check if player is on the tile
+      const isPlayerOnTile = tile.players?.some(p => p.id === playerId);
+      if (!isPlayerOnTile) return;
+
+      // Check if tile is active
+      if (!state.activeTiles.includes(tileKey)) return;
+
+      // Check AP requirements
+      const apCost = isItem ? 3 : 1;
+      if (playerStats.actionPoints < apCost) return;
+
+      // Deduct AP
+      playerStats.actionPoints -= apCost;
+
+      // Add resource/item to player
+      if (isItem && itemId) {
+        // Add item (simplified - would need to get from harvest grid)
+        // This would integrate with the HarvestGrid system
+      } else if (resourceId) {
+        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) + 1;
+      }
+
+      // Deactivate tile (except lakes which can be harvested multiple times)
+      if (tile.terrain !== 'lake') {
+        state.activeTiles = state.activeTiles.filter(id => id !== tileKey);
+        tile.isActive = false;
+      }
+    },
+
+    // Test mode controls
+    setCurrentPlayer: (state, action: PayloadAction<{ playerId: string }>) => {
+      const player = state.players.find(p => p.id === action.payload.playerId);
+      if (player) {
+        state.currentPlayer = player;
+      }
     },
 
     updateTeamScore: (state, action: PayloadAction<{ teamId: string; points: number }>) => {
@@ -286,6 +387,8 @@ export const {
   movePlayer,
   updateGameTimer,
   nextRound,
+  setCurrentPlayer,
+  harvestFromTile,
   updateTeamScore,
   setCameraPosition,
   setZoomLevel,
