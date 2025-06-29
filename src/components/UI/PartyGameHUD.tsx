@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers } from '../../store/gameSlice';
+import { HarvestGrid } from './HarvestGrid';
 import {
   Users,
   Trophy,
@@ -11,7 +12,8 @@ import {
   EyeOff,
   Crown,
   Play,
-  Pause
+  Pause,
+  Package
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -27,6 +29,7 @@ export const PartyGameHUD: React.FC = () => {
   } = useSelector((state: RootState) => state.game);
 
   const [isGamePaused, setIsGamePaused] = useState(false);
+  const [showHarvestGrid, setShowHarvestGrid] = useState(false);
 
   // Game timer effect
   useEffect(() => {
@@ -145,6 +148,18 @@ export const PartyGameHUD: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setShowHarvestGrid(!showHarvestGrid)}
+            className={`p-2 rounded-lg transition-colors ${
+              showHarvestGrid 
+                ? 'bg-green-600 text-white' 
+                : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+            }`}
+            title="Toggle Harvest Grid"
+          >
+            <Package className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={togglePause}
             className={`p-2 rounded-lg transition-colors ${
               isGamePaused 
@@ -198,6 +213,9 @@ export const PartyGameHUD: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Harvest Grid */}
+      {showHarvestGrid && <HarvestGrid />}
     </div>
   );
 };

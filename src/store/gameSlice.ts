@@ -3,10 +3,11 @@ import { CubeCoords, HexTile, coordsToKey, generateHexSpiral } from '../utils/he
 import { 
   gameSize, 
   maxPlayers, 
-  maxTeams, 
-  playersPerTeam, 
-  predefinedTerrain, 
-  playerStartingPositions, 
+  requiredTeams,
+  requiredPlayersPerTeam,
+  isTestMode,
+  predefinedTerrain,
+  playerStartingPositions,
   teamColors,
   Player,
   Team,
@@ -18,7 +19,7 @@ export interface GameState {
   tiles: { [key: string]: HexTile };
   worldSize: number;
   selectedTile: CubeCoords | null;
-  
+
   // Party game state
   gameMode: 'lobby' | 'playing' | 'ended';
   players: Player[];
@@ -26,7 +27,7 @@ export interface GameState {
   currentPlayer: Player | null;
   gameTimer: number;
   roundNumber: number;
-  
+
   // UI state
   showGrid: boolean;
   cameraPosition: { x: number; y: number };
@@ -43,7 +44,7 @@ const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
 
   coords.forEach(coord => {
     const key = coordsToKey(coord);
-    
+
     // Use predefined terrain if available, otherwise default to plains
     const terrain: TerrainType = predefinedTerrain[key] || 'plains';
 
@@ -62,7 +63,7 @@ const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
 // Generate teams with colors
 const generateTeams = (): Team[] => {
   const teams: Team[] = [];
-  for (let i = 0; i < maxTeams; i++) {
+  for (let i = 0; i < requiredTeams; i++) {
     teams.push({
       id: `team_${i + 1}`,
       name: `Team ${i + 1}`,
@@ -99,7 +100,7 @@ const gameSlice = createSlice({
     // Player management
     joinGame: (state, action: PayloadAction<{ playerName: string }>) => {
       const { playerName } = action.payload;
-      
+
       if (state.players.length >= maxPlayers) {
         return; // Game is full
       }
@@ -130,7 +131,7 @@ const gameSlice = createSlice({
         teamId: assignedTeam.id,
         color: assignedTeam.color,
         position: playerStartingPositions[playerNumber - 1],
-        isReady: false,
+        isReady: isTestMode, // Auto-ready in test mode
         isConnected: true
       };
 
@@ -155,11 +156,11 @@ const gameSlice = createSlice({
     leaveGame: (state, action: PayloadAction<{ playerId: string }>) => {
       const { playerId } = action.payload;
       const playerIndex = state.players.findIndex(p => p.id === playerId);
-      
+
       if (playerIndex === -1) return;
 
       const player = state.players[playerIndex];
-      
+
       // Remove from team
       const team = state.teams.find(t => t.id === player.teamId);
       if (team) {
@@ -189,7 +190,17 @@ const gameSlice = createSlice({
     },
 
     startGame: (state) => {
-      if (state.players.length >= 2 && state.players.every(p => p.isReady)) {
+      // Check if we have the required number of teams and players per team
+      const teamsWithPlayers = state.teams.filter(t => t.playerIds.length >= requiredPlayersPerTeam);
+      const hasRequiredTeams = teamsWithPlayers.length >= requiredTeams;
+      const allPlayersReady = state.players.every(p => p.isReady);
+
+      // In test mode, allow starting with fewer requirements
+      const canStart = isTestMode
+        ? (state.players.length >= 2 && allPlayersReady)
+        : (hasRequiredTeams && allPlayersReady);
+
+      if (canStart) {
         state.gameMode = 'playing';
         state.gameTimer = 0;
         state.roundNumber = 1;

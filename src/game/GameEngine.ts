@@ -43,7 +43,7 @@ export class GameScene extends Phaser.Scene {
     // this.load.image('scorch_01', 'src/assets/textures/scorch_01.png');
     // this.load.image('scorch_02', 'src/assets/textures/scorch_02.png');
     // this.load.image('scorch_03', 'src/assets/textures/scorch_03.png');
-    this.load.image('smoke_01', 'src/assets/textures/64_64/smoke_01.png');
+    // this.load.image('smoke_01', 'src/assets/textures/64_64/smoke_01.png');
     // this.load.image('smoke_02', 'src/assets/textures/smoke_02.png');
     // this.load.image('spark_01', 'src/assets/textures/spark_01.png');
     // this.load.image('star_01', 'src/assets/textures/star_01.png');

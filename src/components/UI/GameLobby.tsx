@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import { joinGame, leaveGame, togglePlayerReady, startGame } from '../../store/gameSlice';
-import { 
-  Users, 
-  Play, 
-  UserPlus, 
-  UserMinus, 
-  Check, 
-  X, 
+import { requiredTeams, requiredPlayersPerTeam, isTestMode } from '../../data/gameData';
+import {
+  Users,
+  Play,
+  UserPlus,
+  UserMinus,
+  Check,
+  X,
   Crown,
   Timer,
-  Trophy
+  Trophy,
+  TestTube
 } from 'lucide-react';
 
 export const GameLobby: React.FC = () => {
@@ -40,7 +42,27 @@ export const GameLobby: React.FC = () => {
     dispatch(startGame());
   };
 
-  const canStartGame = players.length >= 2 && players.every(p => p.isReady);
+  // Check game start requirements
+  const teamsWithEnoughPlayers = teams.filter(t => t.playerIds.length >= requiredPlayersPerTeam);
+  const hasRequiredTeams = teamsWithEnoughPlayers.length >= requiredTeams;
+  const allPlayersReady = players.every(p => p.isReady);
+
+  // In test mode, allow starting with fewer requirements
+  const canStartGame = isTestMode
+    ? (players.length >= 2 && allPlayersReady)
+    : (hasRequiredTeams && allPlayersReady);
+
+  const getStartGameMessage = () => {
+    if (isTestMode) {
+      if (players.length < 2) return 'Need at least 2 players to start (Test Mode)';
+      if (!allPlayersReady) return 'All players must be ready to start';
+      return '';
+    } else {
+      if (!hasRequiredTeams) return `Need ${requiredTeams} teams with ${requiredPlayersPerTeam} players each`;
+      if (!allPlayersReady) return 'All players must be ready to start';
+      return '';
+    }
+  };
 
   if (gameMode !== 'lobby') {
     return null;
@@ -55,10 +77,23 @@ export const GameLobby: React.FC = () => {
             <h1 className="text-4xl font-bold text-white mb-4 flex items-center justify-center">
               <Crown className="w-10 h-10 mr-3 text-yellow-400" />
               Heroes Kingdoms Party Game
+              {isTestMode && (
+                <TestTube className="w-6 h-6 ml-3 text-orange-400" title="Test Mode Active" />
+              )}
             </h1>
             <p className="text-slate-300 text-lg">
-              Real-time competitive board game for up to 30 players in 10 teams
+              Real-time competitive board game for up to 30 players in {requiredTeams} teams
             </p>
+            {isTestMode && (
+              <div className="mt-2 bg-orange-900 bg-opacity-50 border border-orange-600 rounded-lg p-3">
+                <div className="flex items-center justify-center space-x-2">
+                  <TestTube className="w-4 h-4 text-orange-400" />
+                  <span className="text-orange-200 text-sm font-medium">
+                    Test Mode: Players auto-ready, relaxed start requirements
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Game Stats */}
@@ -68,13 +103,15 @@ export const GameLobby: React.FC = () => {
               <div className="text-2xl font-bold text-white">{players.length}/30</div>
               <div className="text-slate-400">Players</div>
             </div>
-            
+
             <div className="bg-slate-800 rounded-lg p-6 text-center">
               <Trophy className="w-8 h-8 text-green-400 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-white">{teams.filter(t => t.playerIds.length > 0).length}/10</div>
+              <div className="text-2xl font-bold text-white">
+                {teams.filter(t => t.playerIds.length >= requiredPlayersPerTeam).length}/{requiredTeams}
+              </div>
               <div className="text-slate-400">Active Teams</div>
             </div>
-            
+
             <div className="bg-slate-800 rounded-lg p-6 text-center">
               <Timer className="w-8 h-8 text-purple-400 mx-auto mb-2" />
               <div className="text-2xl font-bold text-white">91</div>
@@ -88,7 +125,7 @@ export const GameLobby: React.FC = () => {
               <UserPlus className="w-5 h-5 mr-2 text-green-400" />
               Join Game
             </h2>
-            
+
             {!showJoinForm ? (
               <button
                 onClick={() => setShowJoinForm(true)}
@@ -133,30 +170,30 @@ export const GameLobby: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {teams.map(team => {
               const teamPlayers = players.filter(p => p.teamId === team.id);
-              
+
               return (
                 <div key={team.id} className="bg-slate-800 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold text-white flex items-center">
-                      <div 
+                      <div
                         className="w-4 h-4 rounded-full mr-2"
                         style={{ backgroundColor: team.color }}
                       />
                       {team.name}
                     </h3>
                     <span className="text-slate-400 text-sm">
-                      {teamPlayers.length}/3 players
+                      {teamPlayers.length}/{requiredPlayersPerTeam} players
                     </span>
                   </div>
-                  
+
                   <div className="space-y-2">
                     {teamPlayers.map(player => (
-                      <div 
+                      <div
                         key={player.id}
                         className="flex items-center justify-between bg-slate-700 rounded-lg p-3"
                       >
                         <div className="flex items-center space-x-3">
-                          <div 
+                          <div
                             className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
                             style={{ backgroundColor: '#DC2626' }}
                           >
@@ -167,7 +204,7 @@ export const GameLobby: React.FC = () => {
                             <Check className="w-4 h-4 text-green-400" />
                           )}
                         </div>
-                        
+
                         <div className="flex items-center space-x-2">
                           {currentPlayer?.id === player.id && (
                             <button
@@ -181,7 +218,7 @@ export const GameLobby: React.FC = () => {
                               {player.isReady ? 'Ready' : 'Not Ready'}
                             </button>
                           )}
-                          
+
                           {currentPlayer?.id === player.id && (
                             <button
                               onClick={() => handleLeaveGame(player.id)}
@@ -193,7 +230,7 @@ export const GameLobby: React.FC = () => {
                         </div>
                       </div>
                     ))}
-                    
+
                     {teamPlayers.length === 0 && (
                       <div className="text-slate-500 text-center py-4 italic">
                         No players in this team
@@ -209,22 +246,27 @@ export const GameLobby: React.FC = () => {
           {players.length > 0 && (
             <div className="bg-slate-800 rounded-lg p-6 text-center">
               <h3 className="text-lg font-bold text-white mb-4">Ready to Start?</h3>
-              
+
               <div className="mb-4">
                 <div className="text-slate-300 mb-2">
                   {players.filter(p => p.isReady).length}/{players.length} players ready
+                  {!isTestMode && (
+                    <span className="ml-4 text-slate-400">
+                      ({teamsWithEnoughPlayers.length}/{requiredTeams} teams ready)
+                    </span>
+                  )}
                 </div>
-                
+
                 <div className="w-full bg-slate-700 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${(players.filter(p => p.isReady).length / Math.max(players.length, 1)) * 100}%` 
+                    style={{
+                      width: `${(players.filter(p => p.isReady).length / Math.max(players.length, 1)) * 100}%`
                     }}
                   />
                 </div>
               </div>
-              
+
               <button
                 onClick={handleStartGame}
                 disabled={!canStartGame}
@@ -237,13 +279,10 @@ export const GameLobby: React.FC = () => {
                 <Play className="w-6 h-6 mr-2" />
                 Start Game
               </button>
-              
+
               {!canStartGame && (
                 <p className="text-slate-400 text-sm mt-2">
-                  {players.length < 2 
-                    ? 'Need at least 2 players to start' 
-                    : 'All players must be ready to start'
-                  }
+                  {getStartGameMessage()}
                 </p>
               )}
             </div>

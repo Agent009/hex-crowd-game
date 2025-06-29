@@ -166,11 +166,14 @@ export type ResourceAmount = {
   [K in ResourceType]?: number;
 };
 
-// Game configuration for party mode
+// Game configuration for party mode - configurable via environment variables
 export const gameSize: number = 5; // Creates 91 hex tiles total
 export const maxPlayers: number = 30;
-export const maxTeams: number = 10;
-export const playersPerTeam: number = 3;
+export const requiredTeams: number = import.meta.env.VITE_REQUIRED_TEAMS ? parseInt(import.meta.env.VITE_REQUIRED_TEAMS) : 10;
+export const requiredPlayersPerTeam: number = import.meta.env.VITE_REQUIRED_PLAYERS_PER_TEAM ? parseInt(import.meta.env.VITE_REQUIRED_PLAYERS_PER_TEAM) : 3;
+export const maxTeams: number = requiredTeams;
+export const playersPerTeam: number = requiredPlayersPerTeam;
+export const isTestMode: boolean = import.meta.env.VITE_TEST_MODE === 'true';
 
 // Predefined terrain layout matching the reference board
 export const predefinedTerrain: { [key: string]: TerrainType } = {
