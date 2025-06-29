@@ -1,7 +1,7 @@
 // Hexagonal grid utilities using cube coordinate system
 import Phaser from "phaser";
-import { BuildingType } from "../data/buildingsData";
-import { ResourceType, TerrainType } from "../data/gameData";
+import { TerrainType } from "../data/gameData";
+import { Player } from "../data/gameData";
 
 export interface CubeCoords {
   q: number;
@@ -25,34 +25,7 @@ export interface HexTile {
   explored: boolean;
   visible: boolean;
   fogLevel: number; // 0 = unexplored, 1 = visible, 2 = explored
-  building?: BuildingType;
-  resource?: ResourceType;
-  resourceDepleted?: boolean; // Track if resource has been collected
-  unit?: Unit;
-  hero?: Hero;
-}
-
-export interface Unit {
-  id: string;
-  type: string;
-  hp: number;
-  maxHp: number;
-  attack: number;
-  defense: number;
-  speed: number;
-  count: number;
-}
-
-export interface Hero {
-  id: string;
-  name: string;
-  faction: string;
-  level: number;
-  experience: number;
-  movement: number;
-  maxMovement: number;
-  army: Unit[];
-  inventory: [];
+  players?: Player[]; // Players on this tile
 }
 
 export type GridSystem = "topDown" | "isometric";
@@ -111,11 +84,8 @@ export const cubeToPixel = (coords: CubeCoords, size: number): Point => {
   // point in **flat** 2D space:
   const flatX = flatWidth  * (coords.q + coords.r/2);
   const flatY = (flatHeight * 3/4) * coords.r;        // 3/4 because each row overlaps the next by 1/4 height
-  // console.log("cubeToPixel > coords", coords, "size", size, "flatWidth", flatWidth, "flatHeight", flatHeight, "flatX", flatX, "flatY", flatY);
 
   if (isTopDownGrid) {
-    // const x = size * (Math.sqrt(3) * coords.q + Math.sqrt(3) / 2 * coords.r);
-    // const y = size * (3 / 2 * coords.r);
     return { x: flatX, y: flatY };
   }
 
@@ -123,16 +93,6 @@ export const cubeToPixel = (coords: CubeCoords, size: number): Point => {
   // Turn that 2D grid into true-iso:
   const isoX = flatX - flatY;
   const isoY = (flatX + flatY) * 0.5;
-  // console.log("cubeToPixel > isoX", isoX, "isoY", isoY);
-
-  // Calculate flat hex position first
-  // const flatX = hexWidth * (coords.q + coords.r * 0.5);
-  // const flatY = hexHeight * coords.r * 0.75; // Adjust vertical spacing
-
-  // Apply isometric transformation (30° rotation + perspective)
-  // This creates the classic diamond-shaped isometric view
-  // const x = (flatX - flatY) * Math.cos(Math.PI / 6);
-  // const y = (flatX + flatY) * Math.sin(Math.PI / 6);
 
   return { x: isoX, y: isoY };
 };
@@ -217,19 +177,6 @@ export const getIsometricHexPoints = (x: number, y: number, size: number): Phase
   }
 
   return pts;
-  // Create true isometric hex points (diamond shape when viewed from isometric angle)
-  // Adjust width and height to ensure tiles connect seamlessly
-  // const width = size * Math.sqrt(3) / 2;
-  // const height = size * 0.75;
-  //
-  // return [
-  //   { x: x, y: y - height },           // Top
-  //   { x: x + width, y: y - height/2 }, // Top right
-  //   { x: x + width, y: y + height/2 }, // Bottom right
-  //   { x: x, y: y + height },           // Bottom
-  //   { x: x - width, y: y + height/2 }, // Bottom left
-  //   { x: x - width, y: y - height/2 }  // Top left
-  // ];
 };
 
 // Generate spiral of hex coordinates from center

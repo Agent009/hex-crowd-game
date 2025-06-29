@@ -8,15 +8,13 @@ import {
   coordsEqual,
   isIsometricGrid, getHexPoints, DEFAULT_HEX_SIZE
 } from '../utils/hexGrid';
-import {resourceData, ResourceType, terrainData, TerrainTypeData} from '../data/gameData';
+import {terrainData, TerrainTypeData} from '../data/gameData';
 import { AtmosphericParticleSystem } from './ParticleSystem';
 import { GameAnimationSystem } from './AnimationSystem';
-import {BuildingType} from "../data/buildingsData.ts";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private fogTiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private fogOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private playerNumbers: Map<string, Phaser.GameObjects.Text> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private particleSystem!: AtmosphericParticleSystem;
   private animationSystem!: GameAnimationSystem;
@@ -25,7 +23,7 @@ export class GameScene extends Phaser.Scene {
   private selectedTile: CubeCoords | null = null;
   private onTileClick?: (coords: CubeCoords) => void;
   private onTileHover?: (coords: CubeCoords | null) => void;
-  private showFogOfWar: boolean = true;
+  private showPlayerNumbers: boolean = true;
   private isInitialized: boolean = false;
 
   constructor() {
@@ -92,14 +90,14 @@ export class GameScene extends Phaser.Scene {
     tiles: { [key: string]: HexTile };
     onTileClick: (coords: CubeCoords) => void;
     onTileHover: (coords: CubeCoords | null) => void;
-    showFogOfWar: boolean;
+    showPlayerNumbers: boolean;
   }) {
     console.log('GameScene > initializeScene() > initializing scene with data:', Object.keys(data.tiles).length, 'tiles');
 
     this.gameData = data.tiles;
     this.onTileClick = data.onTileClick;
     this.onTileHover = data.onTileHover;
-    this.showFogOfWar = data.showFogOfWar;
+    this.showPlayerNumbers = data.showPlayerNumbers;
     this.isInitialized = true;
 
     // Render initial tiles
@@ -143,11 +141,11 @@ export class GameScene extends Phaser.Scene {
       existingTile.destroy();
     }
 
-    // Remove existing fog overlay if it exists
-    const existingFog = this.fogOverlays.get(key);
-    if (existingFog) {
-      existingFog.destroy();
-      this.fogOverlays.delete(key);
+    // Remove existing player number if it exists
+    const existingNumber = this.playerNumbers.get(key);
+    if (existingNumber) {
+      existingNumber.destroy();
+      this.playerNumbers.delete(key);
     }
 
     // Create hex graphics
@@ -156,95 +154,65 @@ export class GameScene extends Phaser.Scene {
 
     this._redrawTileGraphics(graphics, tile, false, false);
 
-    // Clear any existing icons/objects on this tile
-    const existingObjects = this.children.list.filter(child => {
-      // Check if the child has position properties
-      return (
-        child !== graphics &&
-        'x' in child &&
-        'y' in child &&
-        (child as unknown as Phaser.GameObjects.Components.Transform).x === pixel.x &&
-        (child as unknown as Phaser.GameObjects.Components.Transform).y === pixel.y
-      );
-    });
-    existingObjects.forEach(obj => {
-      if (obj.type === 'Text') {
-        obj.destroy();
+    // Add terrain icon
+    const terrain = terrainData[tile.terrain];
+    if (terrain.icon) {
+      // For now, we'll use text representations of terrain
+      let terrainSymbol = '';
+      switch (tile.terrain) {
+        case 'lake': terrainSymbol = '🌊'; break;
+        case 'river': terrainSymbol = '💧'; break;
+        case 'mountain': terrainSymbol = '⛰️'; break;
+        case 'desert': terrainSymbol = '🏜️'; break;
+        case 'plains': terrainSymbol = '💎'; break;
+        case 'forest': terrainSymbol = '🌲'; break;
       }
-    });
-
-    // Add terrain features
-    if (tile.resource) {
-      const resource = resourceData[tile.resource];
-      this.add.text(pixel.x, pixel.y - 8, resource.emoji, {
-        fontSize: '16px',
-        align: 'center'
-      }).setOrigin(0.5);
-    }
-
-    if (tile.building) {
-      this.add.text(pixel.x, pixel.y + 8, '🏰', {
-        fontSize: '20px',
-        align: 'center'
-      }).setOrigin(0.5);
-    }
-
-    if (tile.hero) {
-      this.add.text(pixel.x, pixel.y, '🧙‍♂️', {
-        fontSize: '18px',
-        align: 'center'
-      }).setOrigin(0.5).setDepth(1010); // Higher depth to render on top
-    }
-
-    // Add fog of war
-    if (this.showFogOfWar && tile.fogLevel < 2) {
-      const fogGraphics = this.add.graphics();
-      fogGraphics.setPosition(pixel.x, pixel.y);
-
-      // Create gradient fog effect
-      const alpha = tile.fogLevel === 0 ? 0.85 : 0.5;
-      const fogColor = tile.fogLevel === 0 ? 0x1a1a2e : 0x2d2d44;
-
-      fogGraphics.fillStyle(fogColor, alpha);
-      const hexPoints = getHexPoints(0, 0, this.hexSize);
-      fogGraphics.beginPath();
-      fogGraphics.moveTo(hexPoints[0].x, hexPoints[0].y);
-      for (let i = 1; i < hexPoints.length; i++) {
-        fogGraphics.lineTo(hexPoints[i].x, hexPoints[i].y);
+      
+      if (terrainSymbol) {
+        this.add.text(pixel.x, pixel.y, terrainSymbol, {
+          fontSize: '16px',
+          align: 'center'
+        }).setOrigin(0.5).setDepth(1000);
       }
-      fogGraphics.closePath();
-      fogGraphics.fillPath();
-
-      // Add subtle border for fog transition
-      if (tile.fogLevel === 1) {
-        fogGraphics.lineStyle(1, 0x4a4a6a, 0.3);
-        fogGraphics.strokePath();
-      }
-
-      fogGraphics.setDepth(1300);
-      this.fogOverlays.set(key, fogGraphics);
     }
 
-    // Make tile interactive only if it's visible or explored
+    // Add players on this tile
+    if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
+      tile.players.forEach((player, index) => {
+        const offsetY = index * 20 - (tile.players!.length - 1) * 10;
+        
+        // Player number circle
+        const playerText = this.add.text(pixel.x, pixel.y + offsetY, player.number.toString(), {
+          fontSize: '14px',
+          color: '#ffffff',
+          backgroundColor: '#DC2626',
+          padding: { x: 6, y: 4 }
+        }).setOrigin(0.5).setDepth(1010);
+        
+        // Make it circular
+        playerText.setStyle({
+          ...playerText.style,
+          borderRadius: '50%'
+        });
+        
+        this.playerNumbers.set(`${key}_${player.id}`, playerText);
+      });
+    }
+
+    // Make all tiles interactive in party game
     const hexPoints = getHexPoints(0, 0, this.hexSize);
-
-    // Only make tiles interactive if they are visible (fogLevel > 0) or fog of war is disabled
-    const isInteractive = !this.showFogOfWar || tile.fogLevel > 0;
-
-    if (isInteractive) {
-      graphics.setInteractive(new Phaser.Geom.Polygon(hexPoints), Phaser.Geom.Polygon.Contains);
-      graphics.on('pointerover', () => {
-        this._redrawTileGraphics(graphics, tile, true, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
-        this.onTileHover?.(tile.coords);
-      });
-      graphics.on('pointerout', () => {
-        this._redrawTileGraphics(graphics, tile, false, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
-        this.onTileHover?.(null);
-      });
-      graphics.on('pointerdown', () => {
-        this.selectTile(tile.coords);
-      });
-    }
+    graphics.setInteractive(new Phaser.Geom.Polygon(hexPoints), Phaser.Geom.Polygon.Contains);
+    graphics.on('pointerover', () => {
+      this._redrawTileGraphics(graphics, tile, true, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
+      this.onTileHover?.(tile.coords);
+    });
+    graphics.on('pointerout', () => {
+      this._redrawTileGraphics(graphics, tile, false, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
+      this.onTileHover?.(null);
+    });
+    graphics.on('pointerdown', () => {
+      this.selectTile(tile.coords);
+    });
 
     this.tiles.set(key, graphics);
   }
@@ -429,10 +397,7 @@ export class GameScene extends Phaser.Scene {
     const key = coordsToKey(coords);
     const tileData = this.gameData[key];
 
-    // Only allow selection of visible tiles
-    if (this.showFogOfWar && tileData && tileData.fogLevel === 0) {
-      return; // Cannot select tiles in dense fog
-    }
+    if (!tileData) return;
 
     // Clear previous selection
     if (this.selectedTile) {
@@ -455,52 +420,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateAtmosphericEffects() {
-    if (!this.particleSystem) {
-      return;
-    }
-
-    Object.keys(this.gameData).forEach(key => {
-      const tile = this.gameData[key];
-
-      // Update fog particles based on fog level
-      this.particleSystem.updateFogIntensity(tile.coords, tile.fogLevel);
-
-      // Add ambient effects for explored tiles
-      if (tile.fogLevel === 2 && Math.random() < 0.3) {
-        this.particleSystem.createAmbientEffect(tile.coords, tile.terrain);
-      }
-    });
-  }
-
-  public triggerExplorationEffect(coords: CubeCoords) {
-    // Use new animation system for exploration effects
-    this.animationSystem.createFogRevealAnimation({
-      coords,
-      revealRadius: 2,
-      duration: 1000
-    });
-  }
-
-  public triggerResourceDiscovery(coords: CubeCoords, resourceType: ResourceType, amount: number) {
-    this.animationSystem.createResourceDiscoveryAnimation({
-      coords,
-      resourceType,
-      amount,
-      duration: 2300 // Total duration of all phases
-    });
-  }
-
-  public triggerConstructionCompletion(coords: CubeCoords, buildingType: BuildingType, level: number) {
-    this.animationSystem.createConstructionCompletionAnimation({
-      coords,
-      buildingType,
-      level,
-      duration: 1500 // Total duration of all phases
-    });
-  }
-
-  public triggerMovementEffect(fromCoords: CubeCoords, toCoords: CubeCoords) {
-    this.particleSystem.createUnitMovementEffect(fromCoords, toCoords);
+    // Simplified for party game - no fog effects needed
   }
 
   private clearTiles() {
@@ -508,15 +428,11 @@ export class GameScene extends Phaser.Scene {
     this.tiles.forEach(tile => tile.destroy());
     this.tiles.clear();
 
-    // Destroy all fog tiles
-    this.fogTiles.forEach(fog => fog.destroy());
-    this.fogTiles.clear();
+    // Destroy all player numbers
+    this.playerNumbers.forEach(text => text.destroy());
+    this.playerNumbers.clear();
 
-    // Destroy all fog overlays
-    this.fogOverlays.forEach(fog => fog.destroy());
-    this.fogOverlays.clear();
-
-    // Clear all text objects (icons) that might be left over
+    // Clear all text objects that might be left over
     const textObjects = this.children.list.filter(child => child.type === 'Text');
     textObjects.forEach(obj => obj.destroy());
   }
@@ -537,8 +453,8 @@ export class GameScene extends Phaser.Scene {
     const key = coordsToKey(coords);
     const tile = this.gameData[key];
 
-    // Only allow clicks on visible tiles or when fog of war is disabled
-    if (tile && (!this.showFogOfWar || tile.fogLevel > 0)) {
+    // Allow clicks on all tiles in party game
+    if (tile) {
       this.selectTile(coords);
     }
   }
@@ -561,7 +477,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   public setFogOfWar(enabled: boolean) {
-    this.showFogOfWar = enabled;
+    // Not used in party game
+  }
+
+  public setPlayerNumbersVisibility(enabled: boolean) {
+    this.showPlayerNumbers = enabled;
     if (this.isInitialized) {
       this.renderWorld();
     }

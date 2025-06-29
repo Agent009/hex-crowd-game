@@ -18,33 +18,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   const lastBuildingCompletionRef = useRef<{ [key: string]: number }>({});
   const dispatch = useDispatch();
 
-  const { tiles, selectedTile, selectedHero, heroes, showFogOfWar } = useSelector((state: RootState) => state.game);
+  const { tiles, selectedTile, showPlayerNumbers } = useSelector((state: RootState) => state.game);
 
   // Memoized event handlers to prevent recreation on every render
   const handleTileClick = useCallback((coords: CubeCoords) => {
     const key = coordsToKey(coords);
     const tile = tiles[key];
 
-    // Prevent interaction with tiles in dense fog
-    if (showFogOfWar && tile && tile.fogLevel === 0) {
-      return;
-    }
-
-    // Only select the tile, don't move the hero automatically
+    // Select the tile for party game
     dispatch(selectTile(coords));
-  }, [dispatch, tiles, showFogOfWar, selectedHero, selectedTile, heroes]);
+  }, [dispatch, tiles]);
 
   const handleTileHover = useCallback((coords: CubeCoords | null) => {
-    if (coords) {
-      const key = coordsToKey(coords);
-      const tile = tiles[key];
-
-      // Only show hover effects for visible tiles
-      if (!showFogOfWar || (tile && tile.fogLevel > 0)) {
-        // Could show tile info tooltip here
-      }
-    }
-  }, [tiles, showFogOfWar]);
+    // Handle hover for party game
+  }, [tiles]);
 
   // Initialize Phaser game
   useEffect(() => {
@@ -79,7 +66,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
               tiles,
               onTileClick: handleTileClick,
               onTileHover: handleTileHover,
-              showFogOfWar
+              showPlayerNumbers
             });
           }
         } else {
@@ -140,47 +127,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   useEffect(() => {
     if (sceneRef.current && sceneRef.current.scene.isActive()) {
       sceneRef.current.updateTiles(tiles);
-
-      // Check for resource discoveries and trigger animations
-      Object.entries(tiles).forEach(([key, tile]) => {
-        if (tile.resource && tile.resourceDepleted && !lastResourceCollectionRef.current[key]) {
-          // Resource was just collected
-          lastResourceCollectionRef.current[key] = true;
-          sceneRef.current?.triggerResourceDiscovery(tile.coords, tile.resource, 100);
-        }
-
-        if (tile.explored && tile.visible && tile.fogLevel > 0 && !lastExplorationRef.current[key]) {
-          // Resource was just collected
-          lastExplorationRef.current[key] = true;
-          sceneRef.current?.triggerExplorationEffect(tile.coords);
-        }
-      });
-
-      // Check for building completions
-      // This would need to be integrated with the building system
-      // For now, we'll trigger on building placement
     }
   }, [tiles]);
 
-  // Monitor building completions
+  // Update player numbers visibility when setting changes
   useEffect(() => {
     if (sceneRef.current && sceneRef.current.scene.isActive()) {
-      Object.entries(tiles).forEach(([key, tile]) => {
-        if (tile.building && !coordsEqual(tile.coords, { q: 0, r: 0, s: 0 }) && !lastBuildingCompletionRef.current[key]) {
-          // Building was just completed/placed
-          lastBuildingCompletionRef.current[key] = 1;
-          sceneRef.current?.triggerConstructionCompletion(tile.coords, tile.building, 1);
-        }
-      });
+      sceneRef.current.setPlayerNumbersVisibility(showPlayerNumbers);
     }
-  }, [tiles]);
-  
-  // Update fog of war when setting changes
-  useEffect(() => {
-    if (sceneRef.current && sceneRef.current.scene.isActive()) {
-      sceneRef.current.setFogOfWar(showFogOfWar);
-    }
-  }, [showFogOfWar]);
+  }, [showPlayerNumbers]);
   
   // Update event handlers when they change
   useEffect(() => {
