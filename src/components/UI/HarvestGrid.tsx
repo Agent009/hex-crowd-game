@@ -1,101 +1,151 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { 
-  HarvestGrid as HarvestGridClass, 
-  ResourceData, 
-  ItemData, 
-  resourceDatabase, 
+import { harvestFromTile, craftItem } from '../../store/gameSlice';
+import {
+  HarvestGrid as HarvestGridClass,
+  ResourceData,
+  ItemData,
+  resourceDatabase,
   itemDatabase,
   calculateItemValue,
   canCraftItem
 } from '../../data/harvestData';
 import { terrainData, TerrainType } from '../../data/gameData';
-import { 
-  Package, 
-  Hammer, 
-  Clock, 
-  Coins, 
-  Zap, 
+import { coordsToKey } from '../../utils/hexGrid';
+import {
+  Package,
+  Hammer,
+  Clock,
+  Coins,
+  Zap,
   RefreshCw,
   ChevronDown,
   ChevronUp,
   Wrench,
-  Sparkles
+  Sparkles,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 
 export const HarvestGrid: React.FC = () => {
   const dispatch = useDispatch();
-  const { currentPlayer, gameMode } = useSelector((state: RootState) => state.game);
-  
+  const { currentPlayer, playerStats, selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.game);
+
   const [harvestGrid] = useState(() => new HarvestGridClass());
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [showItems, setShowItems] = useState(false);
   const [showCrafting, setShowCrafting] = useState(false);
-  const [playerResources, setPlayerResources] = useState<{ [key: string]: number }>({});
-  const [playerItems, setPlayerItems] = useState<ItemData[]>([]);
-  const [actionPoints, setActionPoints] = useState(10);
 
   // Refresh grid display
   const [gridKey, setGridKey] = useState(0);
 
-  useEffect(() => {
-    // Initialize player with starting resources for demo
-    setPlayerResources({
-      cloth: 5,
-      wood: 3,
-      stone: 2,
-      water: 4,
-      shard: 1,
-      gems: 0
-    });
-  }, []);
+  const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
+  const selectedTileKey = selectedTile ? coordsToKey(selectedTile) : null;
+  const selectedTileData = selectedTileKey ? tiles[selectedTileKey] : null;
+  const isPlayerOnSelectedTile = selectedTileData?.players?.some(p => p.id === currentPlayer?.id);
+  const isSelectedTileActive = selectedTileKey ? activeTiles.includes(selectedTileKey) : false;
 
   const handleHarvestResource = (terrainType: TerrainType, slotIndex: number) => {
-    if (actionPoints < 1) {
+    if (!currentPlayer || !currentPlayerStats || !selectedTile) {
+      alert('You must select a tile and be on it to harvest!');
+      return;
+    }
+
+    if (!isPlayerOnSelectedTile) {
+      alert('You must be on the selected tile to harvest from it!');
+      return;
+    }
+
+    if (!isSelectedTileActive) {
+      alert('This tile is inactive and cannot be harvested from!');
+      return;
+    }
+
+    if (selectedTileData?.terrain !== terrainType) {
+      alert(`You can only harvest ${terrainType} resources from ${terrainType} tiles!`);
+      return;
+    }
+
+    if (currentPlayerStats.actionPoints < 1) {
       alert('Not enough Action Points!');
       return;
     }
 
     const resource = harvestGrid.harvestResource(terrainType, slotIndex);
     if (resource) {
-      setPlayerResources(prev => ({
-        ...prev,
-        [resource.id]: (prev[resource.id] || 0) + 1
+      // Dispatch harvest action to Redux
+      dispatch(harvestFromTile({
+        playerId: currentPlayer.id,
+        tileCoords: selectedTile,
+        resourceId: resource.id,
+        isItem: false
       }));
-      setActionPoints(prev => prev - 1);
+
       setGridKey(prev => prev + 1); // Force re-render
     }
   };
 
   const handleHarvestItem = (slotIndex: number) => {
-    if (actionPoints < 3) {
+    if (!currentPlayer || !currentPlayerStats || !selectedTile) {
+      alert('You must select a tile and be on it to harvest!');
+      return;
+    }
+
+    if (!isPlayerOnSelectedTile) {
+      alert('You must be on the selected tile to harvest from it!');
+      return;
+    }
+
+    if (!isSelectedTileActive) {
+      alert('This tile is inactive and cannot be harvested from!');
+      return;
+    }
+
+    if (currentPlayerStats.actionPoints < 3) {
       alert('Not enough Action Points! Items cost 3 AP.');
       return;
     }
 
     const item = harvestGrid.harvestItem(slotIndex);
     if (item) {
-      setPlayerItems(prev => [...prev, item]);
-      setActionPoints(prev => prev - 3);
+      // Dispatch harvest action to Redux
+      dispatch(harvestFromTile({
+        playerId: currentPlayer.id,
+        tileCoords: selectedTile,
+        itemId: item.id,
+        isItem: true
+      }));
+
       setGridKey(prev => prev + 1); // Force re-render
     }
   };
 
   const handleCraftItem = (itemId: string) => {
-    const item = harvestGrid.craftItem(itemId, playerResources);
-    if (item) {
-      // Deduct resources
-      const itemTemplate = itemDatabase.find(i => i.id === itemId);
-      if (itemTemplate) {
-        const newResources = { ...playerResources };
-        Object.entries(itemTemplate.craftingRequirements).forEach(([resourceId, cost]) => {
-          newResources[resourceId] = (newResources[resourceId] || 0) - cost;
-        });
-        setPlayerResources(newResources);
-        setPlayerItems(prev => [...prev, item]);
-      }
-    } else {
+    if (!currentPlayerStats) {
+      alert('No player selected!');
+      return;
+    }
+
+    if (!canCraftItem(itemId, currentPlayerStats.resources)) {
       alert('Cannot craft item - insufficient resources!');
+      return;
+    }
+
+    if (!currentPlayer) {
+      alert('No current player!');
+      return;
+    }
+
+    // Dispatch crafting action to Redux
+    dispatch(craftItem({
+      playerId: currentPlayer.id,
+      itemId
+    }));
+
+    const itemTemplate = itemDatabase.find(item => item.id === itemId);
+    if (itemTemplate) {
+      alert(`Successfully crafted ${itemTemplate.name}!`);
     }
   };
 
@@ -126,10 +176,6 @@ export const HarvestGrid: React.FC = () => {
     return icons[itemId] || '📦';
   };
 
-  if (gameMode !== 'playing') {
-    return null;
-  }
-
   const terrainTypes: TerrainType[] = ['plains', 'desert', 'forest', 'mountain', 'river', 'lake'];
 
   return (
@@ -152,49 +198,80 @@ export const HarvestGrid: React.FC = () => {
             <RefreshCw className="w-4 h-4 text-white" />
           </button>
         </div>
-        
+
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center space-x-2">
             <Zap className="w-4 h-4 text-yellow-400" />
-            <span className="text-white font-semibold">{actionPoints} AP</span>
+            <span className="text-white font-semibold">
+              {currentPlayerStats?.actionPoints || 0} AP
+            </span>
           </div>
           <div className="text-slate-400">
             Resources: 1 AP • Items: 3 AP
           </div>
         </div>
+
+        {/* Status Messages */}
+        {!currentPlayer && (
+          <div className="mt-2 p-2 bg-yellow-900 rounded text-yellow-200 text-xs flex items-center">
+            <AlertCircle className="w-3 h-3 mr-1" />
+            No player selected
+          </div>
+        )}
+
+        {currentPlayer && !isPlayerOnSelectedTile && (
+          <div className="mt-2 p-2 bg-red-900 rounded text-red-200 text-xs flex items-center">
+            <AlertCircle className="w-3 h-3 mr-1" />
+            You must be on the selected tile to harvest
+          </div>
+        )}
+
+        {currentPlayer && isPlayerOnSelectedTile && !isSelectedTileActive && (
+          <div className="mt-2 p-2 bg-red-900 rounded text-red-200 text-xs flex items-center">
+            <AlertCircle className="w-3 h-3 mr-1" />
+            This tile is inactive - cannot harvest
+          </div>
+        )}
       </div>
 
       {/* Player Resources */}
-      <div className="p-4 border-b border-slate-600">
-        <h3 className="text-white font-semibold mb-2 flex items-center">
-          <Coins className="w-4 h-4 mr-2 text-yellow-400" />
-          Your Resources
-        </h3>
-        <div className="grid grid-cols-3 gap-2">
-          {Object.entries(playerResources).map(([resourceId, count]) => {
-            const resource = resourceDatabase.find(r => r.id === resourceId);
-            return (
-              <div key={resourceId} className="flex items-center space-x-1 bg-slate-700 p-2 rounded">
-                <span className="text-lg">{renderResourceIcon(resourceId)}</span>
-                <div>
-                  <div className="text-white text-xs font-semibold">{count}</div>
-                  <div className="text-slate-400 text-xs">{resource?.name}</div>
+      {currentPlayerStats && (
+        <div className="p-4 border-b border-slate-600">
+          <h3 className="text-white font-semibold mb-2 flex items-center">
+            <Coins className="w-4 h-4 mr-2 text-yellow-400" />
+            Your Resources
+          </h3>
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(currentPlayerStats.resources).map(([resourceId, count]) => {
+              const resource = resourceDatabase.find(r => r.id === resourceId);
+              return (
+                <div key={resourceId} className="flex items-center space-x-1 bg-slate-700 p-2 rounded">
+                  <span className="text-lg">{renderResourceIcon(resourceId)}</span>
+                  <div>
+                    <div className="text-white text-xs font-semibold">{count}</div>
+                    <div className="text-slate-400 text-xs">{resource?.name || resourceId}</div>
+                  </div>
                 </div>
+              );
+            })}
+            {Object.keys(currentPlayerStats.resources).length === 0 && (
+              <div className="col-span-3 text-slate-500 text-center text-xs py-2">
+                No resources collected yet
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Player Items */}
-      {playerItems.length > 0 && (
+      {currentPlayerStats && currentPlayerStats.items.length > 0 && (
         <div className="p-4 border-b border-slate-600">
           <h3 className="text-white font-semibold mb-2 flex items-center">
             <Wrench className="w-4 h-4 mr-2 text-purple-400" />
-            Your Items ({playerItems.length})
+            Your Items ({currentPlayerStats.items.length})
           </h3>
           <div className="space-y-1 max-h-24 overflow-y-auto">
-            {playerItems.map((item, index) => (
+            {currentPlayerStats.items.map((item, index) => (
               <div key={index} className="flex items-center justify-between bg-slate-700 p-2 rounded text-xs">
                 <div className="flex items-center space-x-2">
                   <span>{renderItemIcon(item.id)}</span>
@@ -209,73 +286,67 @@ export const HarvestGrid: React.FC = () => {
         </div>
       )}
 
-      {/* Harvest Grid */}
+      {/* Resource Harvest Grid */}
       <div className="p-4" key={gridKey}>
-        <h3 className="text-white font-semibold mb-3">Available Resources & Items</h3>
-        
+        <h3 className="text-white font-semibold mb-3">Available Resources</h3>
+
         <div className="space-y-3">
           {terrainTypes.map(terrainType => {
             const terrain = terrainData[terrainType];
             const TerrainIcon = terrain.icon;
             const visibleItems = harvestGrid.getVisibleItems(terrainType);
-            
+            const resources = visibleItems.filter(item => 'terrainDistribution' in item).slice(0, 3);
+            const canHarvestFromTerrain = selectedTileData?.terrain === terrainType && isPlayerOnSelectedTile && isSelectedTileActive;
+
             return (
-              <div key={terrainType} className="bg-slate-700 rounded-lg p-3">
+              <div key={terrainType} className={`rounded-lg p-3 ${canHarvestFromTerrain ? 'bg-slate-700' : 'bg-slate-800 opacity-60'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center space-x-2">
                     <TerrainIcon className="w-4 h-4" style={{ color: terrain.color }} />
                     <span className="text-white font-medium text-sm">{terrain.name}</span>
+                    {!canHarvestFromTerrain && (
+                      <Lock className="w-3 h-3 text-slate-500" />
+                    )}
                   </div>
                   <span className="text-slate-400 text-xs">
-                    {visibleItems.length}/3 items
+                    {resources.length}/3 resources
                   </span>
                 </div>
-                
+
                 <div className="space-y-1">
-                  {visibleItems.map((item, index) => {
-                    const isResource = 'terrainDistribution' in item;
-                    const resource = isResource ? item as ResourceData : null;
-                    const itemData = !isResource ? item as ItemData : null;
-                    
+                  {resources.map((resource, index) => {
+                    const resourceData = resource as ResourceData;
+                    const canHarvest = canHarvestFromTerrain && currentPlayerStats && currentPlayerStats.actionPoints >= 1;
+
                     return (
-                      <div 
+                      <div
                         key={index}
-                        className="flex items-center justify-between bg-slate-600 p-2 rounded hover:bg-slate-500 transition-colors cursor-pointer"
-                        onClick={() => {
-                          if (isResource) {
-                            handleHarvestResource(terrainType, index);
-                          } else {
-                            handleHarvestItem(index);
-                          }
-                        }}
+                        className={`flex items-center justify-between p-2 rounded transition-colors ${
+                          canHarvest 
+                            ? 'bg-slate-600 hover:bg-slate-500 cursor-pointer' 
+                            : 'bg-slate-700 opacity-50 cursor-not-allowed'
+                        }`}
+                        onClick={() => canHarvest && handleHarvestResource(terrainType, index)}
                       >
                         <div className="flex items-center space-x-2">
-                          <span className="text-lg">
-                            {isResource ? renderResourceIcon(resource!.id) : renderItemIcon(itemData!.id)}
-                          </span>
+                          <span className="text-lg">{renderResourceIcon(resourceData.id)}</span>
                           <div>
-                            <div className="text-white text-xs font-semibold">
-                              {isResource ? resource!.name : itemData!.name}
-                            </div>
-                            <div className="text-slate-400 text-xs">
-                              {isResource ? `${resource!.value} coins` : `${itemData!.minUses}-${itemData!.maxUses} uses`}
-                            </div>
+                            <div className="text-white text-xs font-semibold">{resourceData.name}</div>
+                            <div className="text-slate-400 text-xs">{resourceData.value} coins</div>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center space-x-1">
                           <Zap className="w-3 h-3 text-yellow-400" />
-                          <span className="text-yellow-400 text-xs font-semibold">
-                            {isResource ? '1' : '3'}
-                          </span>
+                          <span className="text-yellow-400 text-xs font-semibold">1</span>
                         </div>
                       </div>
                     );
                   })}
-                  
-                  {visibleItems.length === 0 && (
+
+                  {resources.length === 0 && (
                     <div className="text-slate-500 text-xs text-center py-2 italic">
-                      No items available
+                      No resources available
                     </div>
                   )}
                 </div>
@@ -283,6 +354,80 @@ export const HarvestGrid: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* Items Section */}
+      <div className="border-t border-slate-600">
+        <button
+          onClick={() => setShowItems(!showItems)}
+          className="w-full p-4 flex items-center justify-between text-white hover:bg-slate-700 transition-colors"
+        >
+          <div className="flex items-center space-x-2">
+            <Package className="w-4 h-4 text-purple-400" />
+            <span className="font-semibold">Items</span>
+          </div>
+          {showItems ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {showItems && (
+          <div className="p-4 pt-0 space-y-2 max-h-48 overflow-y-auto">
+            <div className="text-slate-400 text-xs mb-3">
+              Only the top 3 items are available for harvest. Items cost 3 AP each.
+            </div>
+
+            {itemDatabase.map((item, index) => {
+              const isEnabled = index < 3; // Only top 3 items are enabled
+              const canHarvest = isEnabled && isPlayerOnSelectedTile && isSelectedTileActive &&
+                               currentPlayerStats && currentPlayerStats.actionPoints >= 3;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`p-3 rounded border transition-colors ${
+                    isEnabled 
+                      ? canHarvest
+                        ? 'bg-slate-600 border-purple-600 hover:bg-slate-500 cursor-pointer' 
+                        : 'bg-slate-700 border-slate-600'
+                      : 'bg-slate-800 border-slate-700 opacity-40'
+                  }`}
+                  onClick={() => canHarvest && handleHarvestItem(index)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-lg">{renderItemIcon(item.id)}</span>
+                      <div>
+                        <div className="text-white text-sm font-semibold flex items-center space-x-2">
+                          <span>{item.name}</span>
+                          {!isEnabled && <Lock className="w-3 h-3 text-slate-500" />}
+                        </div>
+                        <div className="text-slate-400 text-xs">
+                          {item.minUses}-{item.maxUses} uses
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Zap className="w-3 h-3 text-yellow-400" />
+                      <span className="text-yellow-400 text-xs font-semibold">3</span>
+                    </div>
+                  </div>
+
+                  {/* Effects */}
+                  <div className="text-slate-400 text-xs">
+                    {item.effects.slice(0, 1).join(' • ')}
+                    {item.effects.length > 1 && '...'}
+                  </div>
+
+                  {!isEnabled && (
+                    <div className="mt-2 text-red-400 text-xs flex items-center">
+                      <Lock className="w-3 h-3 mr-1" />
+                      Item slot disabled
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Crafting Section */}
@@ -297,14 +442,14 @@ export const HarvestGrid: React.FC = () => {
           </div>
           {showCrafting ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
-        
-        {showCrafting && (
+
+        {showCrafting && currentPlayerStats && (
           <div className="p-4 pt-0 space-y-2 max-h-48 overflow-y-auto">
             {itemDatabase.map(item => {
-              const canCraft = canCraftItem(item.id, playerResources);
-              
+              const canCraft = canCraftItem(item.id, currentPlayerStats.resources);
+
               return (
-                <div 
+                <div
                   key={item.id}
                   className={`p-3 rounded border transition-colors ${
                     canCraft 
@@ -327,11 +472,11 @@ export const HarvestGrid: React.FC = () => {
                       <Sparkles className="w-4 h-4 text-green-400" />
                     )}
                   </div>
-                  
+
                   {/* Requirements */}
                   <div className="flex flex-wrap gap-1 mb-2">
                     {Object.entries(item.craftingRequirements).map(([resourceId, cost]) => {
-                      const hasEnough = (playerResources[resourceId] || 0) >= cost;
+                      const hasEnough = (currentPlayerStats.resources[resourceId] || 0) >= cost;
                       return (
                         <div 
                           key={resourceId}

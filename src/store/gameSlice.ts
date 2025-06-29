@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { CubeCoords, HexTile, coordsToKey, generateHexSpiral } from '../utils/hexGrid';
-import { 
-  gameSize, 
-  maxPlayers, 
+import { itemDatabase } from '../data/harvestData';
+import {
+  gameSize,
+  maxPlayers,
   requiredTeams,
   requiredPlayersPerTeam,
   isTestMode,
@@ -260,8 +261,29 @@ const gameSlice = createSlice({
     movePlayer: (state, action: PayloadAction<{ playerId: string; target: CubeCoords }>) => {
       const { playerId, target } = action.payload;
       const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
 
-      if (!player) return;
+      if (!player || !playerStats) return;
+
+      // Calculate movement cost based on target terrain
+      const targetTileKey = coordsToKey(target);
+      const targetTile = state.tiles[targetTileKey];
+      if (!targetTile) return;
+
+      const movementCost = targetTile.terrain === 'lake' ? 2 :
+                          targetTile.terrain === 'river' ? 2 :
+                          targetTile.terrain === 'mountain' ? 3 :
+                          targetTile.terrain === 'desert' ? 2 :
+                          targetTile.terrain === 'forest' ? 2 :
+                          1; // plains
+
+      // Check if player has enough AP
+      if (playerStats.actionPoints < movementCost) {
+        return; // Not enough AP to move
+      }
+
+      // Deduct AP for movement
+      playerStats.actionPoints -= movementCost;
 
       // Remove player from current tile
       const currentTileKey = coordsToKey(player.position);
@@ -329,15 +351,28 @@ const gameSlice = createSlice({
 
       // Add resource/item to player
       if (isItem && itemId) {
-        // Add item (simplified - would need to get from harvest grid)
-        // This would integrate with the HarvestGrid system
+        // Find the item template from the database
+        const itemTemplate = itemDatabase.find(item => item.id === itemId);
+        if (itemTemplate) {
+          // Generate random uses within the item's range
+          const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
+          const harvestedItem = {
+            ...itemTemplate,
+            minUses: uses,
+            maxUses: uses
+          };
+          playerStats.items.push(harvestedItem);
+        }
       } else if (resourceId) {
         playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) + 1;
       }
 
       // Deactivate tile (except lakes which can be harvested multiple times)
       if (tile.terrain !== 'lake') {
-        state.activeTiles = state.activeTiles.filter(id => id !== tileKey);
+        const tileIndex = state.activeTiles.indexOf(tileKey);
+        if (tileIndex > -1) {
+          state.activeTiles.splice(tileIndex, 1);
+        }
         tile.isActive = false;
       }
     },
@@ -358,6 +393,43 @@ const gameSlice = createSlice({
       }
     },
 
+    // Crafting mechanics
+    craftItem: (state, action: PayloadAction<{
+      playerId: string;
+      itemId: string;
+    }>) => {
+      const { playerId, itemId } = action.payload;
+      const playerStats = state.playerStats[playerId];
+
+      if (!playerStats) return;
+
+      // Find the item template
+      const itemTemplate = itemDatabase.find(item => item.id === itemId);
+      if (!itemTemplate) return;
+
+      // Check if player has required resources
+      for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
+        if ((playerStats.resources[resourceId] || 0) < required) {
+          return; // Not enough resources
+        }
+      }
+
+      // Consume resources
+      for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
+        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) - required;
+      }
+
+      // Generate item with random uses
+      const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
+      const craftedItem = {
+        ...itemTemplate,
+        minUses: uses,
+        maxUses: uses
+      };
+
+      // Add crafted item to player's inventory
+      playerStats.items.push(craftedItem);
+    },
     // UI controls
     setCameraPosition: (state, action: PayloadAction<{ x: number; y: number }>) => {
       state.cameraPosition = action.payload;
@@ -389,6 +461,7 @@ export const {
   nextRound,
   setCurrentPlayer,
   harvestFromTile,
+  craftItem,
   updateTeamScore,
   setCameraPosition,
   setZoomLevel,

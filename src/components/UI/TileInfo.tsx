@@ -46,8 +46,12 @@ export const TileInfo: React.FC = () => {
   // Check if player can move to this tile (simplified for party game)
   const canMoveToTile = () => {
     if (!currentPlayer) return false;
-    // In party game, players can move to adjacent tiles
-    return true; // Simplified for now
+
+    // Check if player has enough AP for movement
+    if (!currentPlayerStats) return false;
+
+    const movementCost = terrain.moveCost || 1;
+    return currentPlayerStats.actionPoints >= movementCost;
   };
 
   const handleMoveHere = () => {
@@ -85,16 +89,14 @@ export const TileInfo: React.FC = () => {
       return;
     }
 
-    // For demo purposes, harvest a random resource based on terrain
-    const resourceId = 'wood'; // Simplified - would be based on harvest grid
+    // Show message that player should use the harvest grid
+    if (isItem) {
+      alert('Use the Harvest Grid to select which item to harvest (3 AP)');
+    } else {
+      alert('Use the Harvest Grid to select which resource to harvest (1 AP)');
+    }
 
-    dispatch(harvestFromTile({
-      playerId: currentPlayer.id,
-      tileCoords: selectedTile,
-      resourceId: isItem ? undefined : resourceId,
-      itemId: isItem ? 'camping_gear' : undefined,
-      isItem
-    }));
+    // The actual harvesting is now done through the HarvestGrid component
   };
 
   return (
@@ -126,7 +128,7 @@ export const TileInfo: React.FC = () => {
         {/* Movement Cost */}
         <div className="flex items-center justify-between">
           <span className="text-slate-300">Move Cost:</span>
-          <span className="text-white font-semibold">{terrain.moveCost || 1}</span>
+          <span className="text-white font-semibold">{terrain.moveCost || 1} AP</span>
         </div>
 
         {/* Defense Bonus */}
@@ -236,6 +238,10 @@ export const TileInfo: React.FC = () => {
           <div className="mt-2 text-xs text-yellow-400">
             No current player
           </div>
+        ) : !canMoveToTile() && !isPlayerOnTile() ? (
+          <div className="mt-2 text-xs text-red-400">
+            Not enough AP to move here (need {terrain.moveCost || 1} AP)
+          </div>
         ) : isPlayerOnTile() ? (
           <div className="mt-2 space-y-1">
             {currentPlayerStats && (
@@ -260,7 +266,13 @@ export const TileInfo: React.FC = () => {
 
         {currentPlayerStats && (
           <div className="mt-2 p-2 bg-slate-700 rounded text-xs">
-            <div className="text-slate-300 mb-1">Player Resources:</div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-300">Player Resources:</span>
+              <div className="flex items-center space-x-1">
+                <Zap className="w-3 h-3 text-yellow-400" />
+                <span className="text-yellow-400 font-semibold">{currentPlayerStats.actionPoints} AP</span>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-1">
               {Object.entries(currentPlayerStats.resources).map(([resourceId, count]) => (
                 <div key={resourceId} className="flex justify-between">
@@ -272,6 +284,14 @@ export const TileInfo: React.FC = () => {
                 <div className="text-slate-500 col-span-2">No resources</div>
               )}
             </div>
+            {currentPlayerStats.items.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-slate-600">
+                <div className="text-slate-300 mb-1">Items: {currentPlayerStats.items.length}</div>
+                <div className="text-slate-400 text-xs">
+                  {currentPlayerStats.items.map(item => item.name).join(', ')}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
