@@ -245,44 +245,46 @@ export const PartyGameHUD: React.FC = () => {
           </button>
 
           {isTestMode && (
-            <button
-              onClick={() => setShowTestControls(!showTestControls)}
-              className={`p-2 rounded-lg transition-colors ${
-                showTestControls 
-                  ? 'bg-orange-600 text-white' 
-                  : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
-              }`}
-              title="Test Mode Controls"
-            >
-              <TestTube className="w-5 h-5" />
-            </button>
+            <>
+              <button
+                onClick={() => setShowTestControls(!showTestControls)}
+                className={`p-2 rounded-lg transition-colors ${
+                  showTestControls 
+                    ? 'bg-orange-600 text-white' 
+                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                }`}
+                title="Test Mode Controls"
+              >
+                <TestTube className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={togglePause}
+                className={`p-2 rounded-lg transition-colors ${
+                  isGamePaused 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                }`}
+                title={isGamePaused ? 'Resume Game' : 'Pause Game'}
+              >
+                {isGamePaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+              </button>
+
+              <button
+                onClick={() => dispatch(nextRound())}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+              >
+                Next Round
+              </button>
+
+              <button
+                onClick={handleEndGame}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+              >
+                End Game
+              </button>
+            </>
           )}
-
-          <button
-            onClick={togglePause}
-            className={`p-2 rounded-lg transition-colors ${
-              isGamePaused 
-                ? 'bg-green-600 text-white' 
-                : 'bg-yellow-600 text-white hover:bg-yellow-700'
-            }`}
-            title={isGamePaused ? 'Resume Game' : 'Pause Game'}
-          >
-            {isGamePaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
-          </button>
-
-          <button
-            onClick={() => dispatch(nextRound())}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
-          >
-            Next Round
-          </button>
-
-          <button
-            onClick={handleEndGame}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
-          >
-            End Game
-          </button>
         </div>
       </div>
 

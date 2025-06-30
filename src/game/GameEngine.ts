@@ -199,36 +199,31 @@ export class GameScene extends Phaser.Scene {
 
     this._redrawTileGraphics(graphics, tile, false, false);
 
-    // Add terrain icon
-    const terrain = terrainData[tile.terrain];
-    if (terrain.icon) {
-      // For now, we'll use text representations of terrain
-      let terrainSymbol = '';
-      switch (tile.terrain) {
-        case 'lake': terrainSymbol = '🌊'; break;
-        case 'river': terrainSymbol = '💧'; break;
-        case 'mountain': terrainSymbol = '⛰️'; break;
-        case 'desert': terrainSymbol = '🏜️'; break;
-        case 'plains': terrainSymbol = '💎'; break;
-        case 'forest': terrainSymbol = '🌲'; break;
-      }
+    // Add terrain icon only if tile is active (not depleted)
+    if (tile.isActive !== false) {
+      const terrain = terrainData[tile.terrain];
+      if (terrain.icon) {
+        // For now, we'll use text representations of terrain
+        let terrainSymbol = '';
+        switch (tile.terrain) {
+          case 'lake': terrainSymbol = '🌊'; break;
+          case 'river': terrainSymbol = '💧'; break;
+          case 'mountain': terrainSymbol = '⛰️'; break;
+          case 'desert': terrainSymbol = '🏜️'; break;
+          case 'plains': terrainSymbol = '💎'; break;
+          case 'forest': terrainSymbol = '🌲'; break;
+        }
 
-      if (terrainSymbol) {
-        this.add.text(pixel.x, pixel.y, terrainSymbol, {
-          fontSize: '16px',
-          align: 'center'
-        }).setOrigin(0.5).setDepth(1000);
+        if (terrainSymbol) {
+          this.add.text(pixel.x, pixel.y, terrainSymbol, {
+            fontSize: '16px',
+            align: 'center'
+          }).setOrigin(0.5).setDepth(1000);
+        }
       }
     }
 
-    // Add active/inactive indicator
-    if (tile.isActive === false) {
-      // Add a red X or inactive indicator
-      this.add.text(pixel.x + 15, pixel.y - 15, '❌', {
-        fontSize: '12px',
-        align: 'center'
-      }).setOrigin(0.5).setDepth(1005);
-    }
+    // No longer showing X for inactive tiles - just remove the icon entirely
 
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {

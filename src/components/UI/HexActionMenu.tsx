@@ -46,10 +46,6 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
   const isActive = activeTiles.includes(tileKey);
   const terrain = terrainData[tile?.terrain || 'plains'];
 
-  // Calculate screen position for the menu
-  const pixel = cubeToPixel(selectedTile, DEFAULT_HEX_SIZE);
-  const menuRadius = 80;
-
   const canMove = () => {
     if (!currentPlayer || !currentPlayerStats || currentPhase !== 'interaction') return false;
     if (isPlayerOnTile) return false;
@@ -96,11 +92,14 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     };
   };
 
+  const enableHarvestResource = canHarvest() && currentPlayerStats!.actionPoints >= 1;
+  const enableHarvestItem = canHarvest() && currentPlayerStats!.actionPoints >= 3;
+
   const actions = [
     {
       id: 'move',
       icon: Move,
-      label: 'Move Here',
+      label: canMove() ? 'Move Here' : 'Cannot Move Here',
       color: 'bg-blue-600 hover:bg-blue-700',
       enabled: canMove(),
       onClick: handleAction(handleMove),
@@ -109,25 +108,25 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     {
       id: 'harvest-resource',
       icon: Package,
-      label: 'Harvest Resource',
+      label: enableHarvestResource ? 'Harvest Resource (1 AP)' : 'Harvest Resource (need 1 AP)',
       color: 'bg-green-600 hover:bg-green-700',
-      enabled: canHarvest() && currentPlayerStats!.actionPoints >= 1,
+      enabled: enableHarvestResource,
       onClick: handleAction(() => onOpenHarvestGrid('resources'), true),
       angle: -30 // Top right
     },
     {
       id: 'harvest-item',
       icon: Sparkles,
-      label: 'Harvest Item',
+      label: enableHarvestItem ? 'Harvest Item (3 AP)' : 'Harvest Item (need 3 AP)',
       color: 'bg-purple-600 hover:bg-purple-700',
-      enabled: canHarvest() && currentPlayerStats!.actionPoints >= 3,
+      enabled: enableHarvestItem,
       onClick: handleAction(() => onOpenHarvestGrid('items'), true),
       angle: 30 // Bottom right
     },
     {
       id: 'craft',
       icon: Hammer,
-      label: 'Craft Item',
+      label: canCraft() ? 'Craft Item' : 'Cannot Craft Item',
       color: 'bg-orange-600 hover:bg-orange-700',
       enabled: canCraft(),
       onClick: handleAction(() => onOpenHarvestGrid('crafting'), true),
@@ -144,41 +143,78 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     }
   ];
 
-  const getActionPosition = (angle: number) => {
-    const radian = (angle * Math.PI) / 180;
-    const x = pixel.x + Math.cos(radian) * menuRadius;
-    const y = pixel.y + Math.sin(radian) * menuRadius;
-    return { x, y };
-  };
-
-  // Convert world coordinates to screen coordinates
+  // Calculate screen position more reliably
+  const getScreenPosition = () => {
+  // Get the game container
   const gameContainer = document.getElementById('game-container');
-  const containerRect = gameContainer?.getBoundingClientRect();
+  if (!gameContainer) return { x: 0, y: 0 };
 
-  if (!containerRect) return null;
+  const containerRect = gameContainer.getBoundingClientRect();
 
-  // Get the camera position and zoom from the Phaser game
-  const gameCanvas = gameContainer?.querySelector('canvas');
-  if (!gameCanvas) return null;
-
-  const canvasRect = gameCanvas.getBoundingClientRect();
-
-  // Get the Phaser game instance to access camera information
+  // Try to get the tile position directly from the Phaser game
   const phaserGame = (window as any).phaserGame;
+  if (phaserGame?.scene?.scenes?.[0]) {
+    const gameScene = phaserGame.scene.scenes[0];
+
+    // Try to get the tile sprite or object from the scene
+    if (gameScene.tiles) {
+      const tileKey = coordsToKey(selectedTile);
+      const tileObject = gameScene.tiles.get(tileKey);
+
+      if (tileObject) {
+        // Convert world position to screen position
+        const camera = gameScene.cameras.main;
+        const worldX = tileObject.x;
+        const worldY = tileObject.y;
+
+        // Calculate screen position using the camera's projection
+        const screenX = containerRect.left + (worldX - camera.scrollX) * camera.zoom;
+        const screenY = containerRect.top + (worldY - camera.scrollY) * camera.zoom;
+
+        console.log("Using tile object position:", { worldX, worldY, screenX, screenY });
+        return { x: screenX, y: screenY };
+      }
+    }
+  }
+
+  // Fallback to the original calculation if we can't get the position directly
+  const worldPixel = cubeToPixel(selectedTile, DEFAULT_HEX_SIZE);
+
+  // Try to get camera information from Phaser
   let cameraX = 0;
   let cameraY = 0;
   let zoom = 1;
 
-  if (phaserGame && phaserGame.scene && phaserGame.scene.scenes[0]) {
+  if (phaserGame?.scene?.scenes?.[0]?.cameras?.main) {
     const camera = phaserGame.scene.scenes[0].cameras.main;
-    cameraX = camera.scrollX;
-    cameraY = camera.scrollY;
-    zoom = camera.zoom;
+    cameraX = camera.scrollX || 0;
+    cameraY = camera.scrollY || 0;
+    zoom = camera.zoom || 1;
   }
 
-  // Convert world coordinates to screen coordinates accounting for camera position and zoom
-  const screenX = canvasRect.left + (canvasRect.width / 2) + ((pixel.x - cameraX) * zoom);
-  const screenY = canvasRect.top + (canvasRect.height / 2) + ((pixel.y - cameraY) * zoom);
+  // Calculate screen position
+  const screenX = containerRect.left + ((worldPixel.x - cameraX) * zoom);
+  const screenY = containerRect.top + ((worldPixel.y - cameraY) * zoom);
+
+  console.log("Fallback position calculation:", {
+    containerRect,
+    worldPixel,
+    camera: { x: cameraX, y: cameraY, zoom },
+    result: { x: screenX, y: screenY }
+  });
+
+  return { x: screenX, y: screenY };
+};
+
+  const screenPosition = getScreenPosition();
+  const menuRadius = 80;
+
+  const getActionPosition = (angle: number) => {
+    const radian = (angle * Math.PI) / 180;
+    const x = screenPosition.x + Math.cos(radian) * menuRadius;
+    const y = screenPosition.y + Math.sin(radian) * menuRadius;
+    return { x, y };
+  };
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[45]">
@@ -186,18 +222,14 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       <div
         className="absolute w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse"
         style={{
-          left: screenX,
-          top: screenY,
+          left: screenPosition.x,
+          top: screenPosition.y,
         }}
       />
 
       {/* Action buttons */}
       {actions.map((action) => {
-        const worldPosition = getActionPosition(action.angle);
-        const screenPosition = {
-          x: canvasRect.left + canvasRect.width / 2 + worldPosition.x,
-          y: canvasRect.top + canvasRect.height / 2 + worldPosition.y
-        };
+        const position = getActionPosition(action.angle);
         const Icon = action.icon;
 
         return (
@@ -205,8 +237,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
             key={action.id}
             className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto animate-fade-in"
             style={{
-              left: screenPosition.x,
-              top: screenPosition.y,
+              left: position.x,
+              top: position.y,
               animationDelay: `${actions.indexOf(action) * 50}ms`
             }}
           >
@@ -247,19 +279,15 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
         {actions.map((action) => {
           if (!action.enabled) return null;
 
-          const worldPosition = getActionPosition(action.angle);
-          const screenPosition = {
-            x: canvasRect.left + (canvasRect.width / 2) + ((worldPosition.x - cameraX) * zoom),
-            y: canvasRect.top + (canvasRect.height / 2) + ((worldPosition.y - cameraY) * zoom)
-          };
+          const position = getActionPosition(action.angle);
 
           return (
             <line
               key={`line-${action.id}`}
-              x1={screenX}
-              y1={screenY}
-              x2={screenPosition.x}
-              y2={screenPosition.y}
+              x1={screenPosition.x}
+              y1={screenPosition.y}
+              x2={position.x}
+              y2={position.y}
               stroke="rgba(255, 255, 255, 0.5)"
               strokeWidth="2"
               strokeDasharray="2,2"
