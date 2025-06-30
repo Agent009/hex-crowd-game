@@ -368,6 +368,15 @@ const gameSlice = createSlice({
         state.phaseTimer = phaseDurations.round_start;
         state.showPhaseOverlay = true;
 
+        // Add game start event
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'round_start',
+          message: `Game started! Round ${state.roundNumber} begins`,
+          details: {}
+        });
+
         // Give all players +2 AP to start
         state.players.forEach(player => {
           if (state.playerStats[player.id]) {
@@ -433,6 +442,18 @@ const gameSlice = createSlice({
       // Add status effect for item usage (for UI feedback)
       if (itemUsed) {
         playerStats.statusEffects.push(`Used ${terrain.requiredItem}`);
+
+        // Add item usage event
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'item_usage',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} used ${terrain.requiredItem?.replace('_', ' ')} to move`,
+          details: { item: terrain.requiredItem?.replace('_', ' ') }
+        });
       }
       // Remove player from current tile
       const currentTileKey = coordsToKey(player.position);
@@ -486,6 +507,15 @@ const gameSlice = createSlice({
         if (nextIndex === 0) {
           // Completed all phases, start next round
           state.roundNumber += 1;
+
+          // Add round start event
+          state.activityEvents.unshift({
+            id: `${Date.now()}_${Math.random()}`,
+            timestamp: Date.now(),
+            type: 'round_start',
+            message: `Round ${state.roundNumber} begins`,
+            details: {}
+          });
 
           // Give all players +2 AP at start of each round
           state.players.forEach(player => {
@@ -607,8 +637,43 @@ const gameSlice = createSlice({
                     if (playerStats) {
                       playerStats.hp = Math.max(0, playerStats.hp + damage);
                       playerStats.statusEffects.push(`${disasterInfo.name}: ${Math.abs(damage)} damage`);
+
+                      // Add disaster damage event
+                      state.activityEvents.unshift({
+                        id: `${Date.now()}_${Math.random()}`,
+                        timestamp: Date.now(),
+                        type: 'disaster',
+                        playerId: player.id,
+                        playerName: player.name,
+                        playerNumber: player.number,
+                        message: `${player.name} took ${Math.abs(damage)} damage from ${disasterInfo.name}`,
+                        details: {
+                          damage: Math.abs(damage),
+                          disaster: disasterInfo.name,
+                          terrain: terrain
+                        }
+                      });
                     }
                   }
+                }
+              });
+
+              // Add general disaster event
+              state.activityEvents.unshift({
+                id: `${Date.now()}_${Math.random()}`,
+                timestamp: Date.now(),
+                type: 'disaster',
+                message: `${disasterInfo.name} struck ${terrain} terrain!`,
+                details: {
+                  disaster: disasterInfo.name,
+                  terrain: terrain,
+                  affectedPlayers: state.players
+                    .filter(p => {
+                      const tileKey = coordsToKey(p.position);
+                      const tile = state.tiles[tileKey];
+                      return tile && tile.terrain === terrain;
+                    })
+                    .map(p => p.name)
                 }
               });
             }
@@ -623,6 +688,18 @@ const gameSlice = createSlice({
       });
 
       eliminatedPlayers.forEach(player => {
+        // Add elimination event
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'elimination',
+          playerId: player.id,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} has been eliminated (0 HP)`,
+          details: {}
+        });
+
         // Remove from team
         const team = state.teams.find(t => t.id === player.teamId);
         if (team) {
@@ -649,6 +726,9 @@ const gameSlice = createSlice({
           state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
         }
       });
+
+      // Keep only last 100 events
+      state.activityEvents = state.activityEvents.slice(0, 100);
     },
 
     // Harvesting mechanics
@@ -797,9 +877,8 @@ const gameSlice = createSlice({
       const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
       const craftedItem = {
         ...itemTemplate,
-        minUses: uses,
-        maxUses: uses
-      };
+        availableUses: uses
+      }
 
       // Add crafted item to player's inventory
       playerStats.items.push(craftedItem);

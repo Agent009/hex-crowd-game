@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
-import { 
-  Clock, 
-  MapPin, 
-  Package, 
-  Hammer, 
-  Heart, 
-  Zap, 
+import {
+  Clock,
+  MapPin,
+  Package,
+  Hammer,
+  Heart,
+  Zap,
   AlertTriangle,
   Scroll,
   ChevronDown,
@@ -15,217 +15,31 @@ import {
   Filter,
   X
 } from 'lucide-react';
-
-export interface ActivityEvent {
-  id: string;
-  timestamp: number;
-  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start';
-  playerId?: string;
-  playerName?: string;
-  playerNumber?: number;
-  message: string;
-  details?: {
-    coords?: { q: number; r: number; s: number };
-    terrain?: string;
-    item?: string;
-    resource?: string;
-    damage?: number;
-    healing?: number;
-    disaster?: string;
-    affectedPlayers?: string[];
-  };
-}
+import { ActivityEvent } from "../../store/gameSlice.ts";
 
 interface ActivityLogProps {
   isMinimized?: boolean;
   onToggleMinimize?: () => void;
 }
 
-export const ActivityLog: React.FC<ActivityLogProps> = ({ 
-  isMinimized = false, 
-  onToggleMinimize 
+export const ActivityLog: React.FC<ActivityLogProps> = ({
+  isMinimized = false,
+  onToggleMinimize
 }) => {
-  const { players, playerStats, roundNumber, gameTimer } = useSelector((state: RootState) => state.game);
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const { roundNumber, gameTimer, activityEvents } = useSelector((state: RootState) => state.game);
   const [filteredEvents, setFilteredEvents] = useState<ActivityEvent[]>([]);
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set());
   const [autoScroll, setAutoScroll] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastStatsRef = useRef<{ [playerId: string]: any }>({});
-
-  // Initialize with round start event
-  useEffect(() => {
-    if (roundNumber > 0) {
-      addEvent({
-        type: 'round_start',
-        message: `Round ${roundNumber} begins`,
-        details: {}
-      });
-    }
-  }, [roundNumber]);
-
-  // Monitor player stats for changes
-  useEffect(() => {
-    Object.entries(playerStats).forEach(([playerId, stats]) => {
-      const lastStats = lastStatsRef.current[playerId];
-      const player = players.find(p => p.id === playerId);
-      
-      if (!player || !lastStats) {
-        lastStatsRef.current[playerId] = { ...stats };
-        return;
-      }
-
-      // Check for HP changes
-      if (stats.hp !== lastStats.hp) {
-        const hpDiff = stats.hp - lastStats.hp;
-        if (hpDiff < 0) {
-          addEvent({
-            type: 'damage',
-            playerId,
-            playerName: player.name,
-            playerNumber: player.number,
-            message: `${player.name} lost ${Math.abs(hpDiff)} HP`,
-            details: { damage: Math.abs(hpDiff) }
-          });
-        } else if (hpDiff > 0) {
-          addEvent({
-            type: 'healing',
-            playerId,
-            playerName: player.name,
-            playerNumber: player.number,
-            message: `${player.name} gained ${hpDiff} HP`,
-            details: { healing: hpDiff }
-          });
-        }
-      }
-
-      // Check for AP changes (excluding round start)
-      if (stats.actionPoints !== lastStats.actionPoints && stats.actionPoints < lastStats.actionPoints) {
-        const apUsed = lastStats.actionPoints - stats.actionPoints;
-        // This could be movement, harvesting, or other actions
-        // We'll let specific actions add their own events
-      }
-
-      // Check for resource changes
-      Object.keys(stats.resources).forEach(resourceId => {
-        const current = stats.resources[resourceId] || 0;
-        const previous = lastStats.resources[resourceId] || 0;
-        
-        if (current > previous) {
-          addEvent({
-            type: 'harvesting',
-            playerId,
-            playerName: player.name,
-            playerNumber: player.number,
-            message: `${player.name} harvested ${current - previous} ${resourceId}`,
-            details: { resource: resourceId }
-          });
-        }
-      });
-
-      // Check for item changes
-      if (stats.items.length !== lastStats.items.length) {
-        const newItems = stats.items.filter(item => 
-          !lastStats.items.some((lastItem: any) => 
-            lastItem.id === item.id && lastItem.availableUses === item.availableUses
-          )
-        );
-        
-        newItems.forEach(item => {
-          addEvent({
-            type: 'crafting',
-            playerId,
-            playerName: player.name,
-            playerNumber: player.number,
-            message: `${player.name} crafted ${item.name}`,
-            details: { item: item.name }
-          });
-        });
-      }
-
-      // Check for status effects (item usage, terrain effects)
-      if (stats.statusEffects && stats.statusEffects.length > 0) {
-        stats.statusEffects.forEach(effect => {
-          if (effect.includes('Used')) {
-            const itemName = effect.replace('Used ', '').replace('_', ' ');
-            addEvent({
-              type: 'item_usage',
-              playerId,
-              playerName: player.name,
-              playerNumber: player.number,
-              message: `${player.name} used ${itemName}`,
-              details: { item: itemName }
-            });
-          } else if (effect.includes('Lost') && effect.includes('HP')) {
-            // Terrain effect damage
-            addEvent({
-              type: 'terrain_effect',
-              playerId,
-              playerName: player.name,
-              playerNumber: player.number,
-              message: `${player.name} ${effect.toLowerCase()}`,
-              details: {}
-            });
-          } else if (effect.includes('damage')) {
-            // Disaster damage
-            addEvent({
-              type: 'disaster',
-              playerId,
-              playerName: player.name,
-              playerNumber: player.number,
-              message: `${player.name} ${effect.toLowerCase()}`,
-              details: {}
-            });
-          }
-        });
-      }
-
-      lastStatsRef.current[playerId] = { ...stats };
-    });
-  }, [playerStats, players]);
-
-  // Monitor for eliminated players
-  useEffect(() => {
-    const eliminatedPlayers = Object.entries(playerStats)
-      .filter(([, stats]) => stats.hp <= 0)
-      .map(([playerId]) => players.find(p => p.id === playerId))
-      .filter(Boolean);
-
-    eliminatedPlayers.forEach(player => {
-      if (player) {
-        addEvent({
-          type: 'elimination',
-          playerId: player.id,
-          playerName: player.name,
-          playerNumber: player.number,
-          message: `${player.name} has been eliminated (0 HP)`,
-          details: {}
-        });
-      }
-    });
-  }, [playerStats, players]);
-
-  const addEvent = (eventData: Omit<ActivityEvent, 'id' | 'timestamp'>) => {
-    const newEvent: ActivityEvent = {
-      id: `${Date.now()}_${Math.random()}`,
-      timestamp: Date.now(),
-      ...eventData
-    };
-
-    setEvents(prev => {
-      const updated = [newEvent, ...prev].slice(0, 50); // Keep last 50 events
-      return updated;
-    });
-  };
 
   // Filter events based on selected filters
   useEffect(() => {
     if (selectedFilters.size === 0) {
-      setFilteredEvents(events);
+      setFilteredEvents(activityEvents);
     } else {
-      setFilteredEvents(events.filter(event => selectedFilters.has(event.type)));
+      setFilteredEvents(activityEvents.filter(event => selectedFilters.has(event.type)));
     }
-  }, [events, selectedFilters]);
+  }, [activityEvents, selectedFilters]);
 
   // Auto-scroll to latest events
   useEffect(() => {
@@ -303,9 +117,9 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
           title="Open Activity Log"
         >
           <Scroll className="w-5 h-5" />
-          {events.length > 0 && (
+          {activityEvents.length > 0 && (
             <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              {Math.min(events.length, 9)}
+              {Math.min(activityEvents.length, 9)}
             </div>
           )}
         </button>
@@ -374,7 +188,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
       </div>
 
       {/* Events List */}
-      <div 
+      <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-3 space-y-2"
         onScroll={(e) => {
@@ -394,7 +208,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
           filteredEvents.map(event => {
             const Icon = getEventIcon(event.type);
             const colorClass = getEventColor(event.type);
-            
+
             return (
               <div
                 key={event.id}
@@ -409,7 +223,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
                         {formatTime(event.timestamp)}
                       </span>
                     </div>
-                    
+
                     {event.details?.coords && (
                       <p className="text-slate-400 text-xs mt-1">
                         Coordinates: ({event.details.coords.q}, {event.details.coords.r}, {event.details.coords.s})
