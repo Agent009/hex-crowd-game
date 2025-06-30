@@ -102,6 +102,16 @@ export interface TerrainTypeData {
   defenseBonus: number;
   color: string;
   icon: any;
+  requiredItem?: string; // Item required to move to this tile
+  alternativeAPCost?: number; // Extra AP cost if no required item
+  effects?: {
+    hpLossPerRound?: number;
+    protectionItem?: string; // Item that prevents HP loss
+    protectionResource?: string; // Resource that prevents HP loss
+    itemChance?: number; // Chance to find items
+    alwaysActive?: boolean; // Tile remains active for harvesting
+  };
+  disasters?: string[]; // Disasters this terrain is vulnerable to
 }
 
 export type TerrainData = Record<TerrainType, TerrainTypeData>;
@@ -113,45 +123,159 @@ export const terrainData: TerrainData = {
     moveCost: 2,
     defenseBonus: 0,
     color: '#1976D2',
-    icon: Droplets
+    icon: Droplets,
+    requiredItem: 'boat',
+    alternativeAPCost: 2, // 1 base + 1 extra = 2 total
+    effects: {
+      alwaysActive: true
+    },
+    disasters: ['storm']
   },
   river: {
     name: 'River',
-    moveCost: 2,
+    moveCost: 1,
     defenseBonus: 0,
     color: '#2196F3',
-    icon: Waves
+    icon: Waves,
+    requiredItem: 'boat',
+    alternativeAPCost: 2, // 1 base + 1 extra = 2 total
+    effects: {
+      hpLossPerRound: 2,
+      protectionItem: 'boat'
+    },
+    disasters: ['tsunami']
   },
   mountain: {
     name: 'Mountain',
-    moveCost: 3,
+    moveCost: 2,
     defenseBonus: 2,
     color: '#6D4C41',
-    icon: Mountain
+    icon: Mountain,
+    requiredItem: 'climbing_gear',
+    alternativeAPCost: 3, // 2 base + 1 extra = 3 total
+    effects: {
+      itemChance: 25
+    },
+    disasters: ['earthquake']
   },
   desert: {
     name: 'Desert',
-    moveCost: 2,
+    moveCost: 1,
     defenseBonus: 0,
     color: '#FFB74D',
-    icon: Flag
+    icon: Flag,
+    effects: {
+      hpLossPerRound: 2,
+      protectionResource: 'water'
+    },
+    disasters: ['sandstorm']
   },
   plains: {
     name: 'Plains',
     moveCost: 1,
     defenseBonus: 0,
     color: '#4DB6AC',
-    icon: Diamond
+    icon: Diamond,
+    effects: {
+      // Sunfire health chance - to be implemented
+    },
+    disasters: ['earthquake', 'sandstorm']
   },
   forest: {
     name: 'Forest',
     moveCost: 2,
     defenseBonus: 1,
     color: '#388E3C',
-    icon: Trees
+    icon: Trees,
+    effects: {
+      hpLossPerRound: 2,
+      protectionItem: 'camping_gear'
+    },
+    disasters: ['wildfire']
   }
 };
 
+// Disaster definitions
+export interface DisasterData {
+  id: string;
+  name: string;
+  effects: { [terrain: string]: number }; // HP damage per terrain
+  animation?: string;
+  color: string;
+}
+
+export const disasterData: { [key: string]: DisasterData } = {
+  earthquake: {
+    id: 'earthquake',
+    name: 'Earthquake',
+    effects: {
+      plains: -3,
+      desert: -3,
+      forest: -3,
+      mountain: -3,
+      river: 0,
+      lake: 0
+    },
+    animation: 'shake',
+    color: '#8B4513'
+  },
+  sandstorm: {
+    id: 'sandstorm',
+    name: 'Sandstorm',
+    effects: {
+      plains: -2,
+      desert: -3,
+      forest: 0,
+      mountain: 0,
+      river: 0,
+      lake: 0
+    },
+    animation: 'dust',
+    color: '#DEB887'
+  },
+  wildfire: {
+    id: 'wildfire',
+    name: 'Wildfire',
+    effects: {
+      plains: -2,
+      desert: 0,
+      forest: -3,
+      mountain: 0,
+      river: 0,
+      lake: 0
+    },
+    animation: 'fire',
+    color: '#FF4500'
+  },
+  tsunami: {
+    id: 'tsunami',
+    name: 'Tsunami',
+    effects: {
+      plains: -3,
+      desert: 0,
+      forest: -2,
+      mountain: 0,
+      river: -1,
+      lake: -1
+    },
+    animation: 'wave',
+    color: '#4682B4'
+  },
+  storm: {
+    id: 'storm',
+    name: 'Storm',
+    effects: {
+      plains: 0,
+      desert: 0,
+      forest: 0,
+      mountain: 0,
+      river: 0,
+      lake: -2 // Special: destroys boats
+    },
+    animation: 'lightning',
+    color: '#483D8B'
+  }
+};
 // Resource icons and data (simplified for party game)
 export const resourceData = {
   gold: { name: 'Gold', color: '#FFD700', icon: Diamond, emoji: '💰' },

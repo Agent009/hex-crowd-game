@@ -50,7 +50,17 @@ export const TileInfo: React.FC = () => {
     // Check if player has enough AP for movement
     if (!currentPlayerStats) return false;
 
-    const movementCost = terrain.moveCost || 1;
+    let movementCost = terrain.moveCost || 1;
+
+    // Check if terrain requires a specific item
+    if (terrain.requiredItem) {
+      const hasRequiredItem = currentPlayerStats.items.some(item => item.id === terrain.requiredItem);
+      if (!hasRequiredItem) {
+        // Player doesn't have required item - pay extra AP
+        movementCost = terrain.alternativeAPCost || (terrain.moveCost + 1);
+      }
+    }
+
     return currentPlayerStats.actionPoints >= movementCost;
   };
 
@@ -128,8 +138,59 @@ export const TileInfo: React.FC = () => {
         {/* Movement Cost */}
         <div className="flex items-center justify-between">
           <span className="text-slate-300">Move Cost:</span>
-          <span className="text-white font-semibold">{terrain.moveCost || 1} AP</span>
+          <div className="flex flex-col items-end">
+            <span className="text-white font-semibold">{terrain.moveCost || 1} AP</span>
+            {terrain.requiredItem && (
+              <span className="text-xs text-orange-400">
+                +{(terrain.alternativeAPCost || terrain.moveCost + 1) - terrain.moveCost} AP without {terrain.requiredItem.replace('_', ' ')}
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Required Item */}
+        {terrain.requiredItem && (
+          <div className="flex items-center justify-between">
+            <span className="text-slate-300">Requires:</span>
+            <span className="text-orange-400 font-semibold capitalize">
+              {terrain.requiredItem.replace('_', ' ')}
+            </span>
+          </div>
+        )}
+
+        {/* Terrain Effects */}
+        {terrain.effects && (
+          <div className="flex items-center justify-between">
+            <span className="text-slate-300">Effects:</span>
+            <div className="text-right text-xs">
+              {terrain.effects.hpLossPerRound && (
+                <div className="text-red-400">
+                  -{Math.abs(terrain.effects.hpLossPerRound)} HP/round
+                  {terrain.effects.protectionItem && (
+                    <div className="text-green-400">
+                      (Protected by {terrain.effects.protectionItem.replace('_', ' ')})
+                    </div>
+                  )}
+                  {terrain.effects.protectionResource && (
+                    <div className="text-blue-400">
+                      (Protected by {terrain.effects.protectionResource})
+                    </div>
+                  )}
+                </div>
+              )}
+              {terrain.effects.itemChance && (
+                <div className="text-purple-400">
+                  {terrain.effects.itemChance}% item chance
+                </div>
+              )}
+              {terrain.effects.alwaysActive && (
+                <div className="text-green-400">
+                  Always harvestable
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Defense Bonus */}
         <div className="flex items-center justify-between">
@@ -138,6 +199,16 @@ export const TileInfo: React.FC = () => {
             {(terrain.defenseBonus || 0) >= 0 ? '+' : ''}{terrain.defenseBonus || 0}
           </span>
         </div>
+
+        {/* Disaster Vulnerability */}
+        {terrain.disasters && terrain.disasters.length > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-slate-300">Disasters:</span>
+            <span className="text-red-400 text-xs">
+              {terrain.disasters.join(', ')}
+            </span>
+          </div>
+        )}
 
         {/* Tile Status */}
         <div className="flex items-center justify-between">
@@ -240,7 +311,16 @@ export const TileInfo: React.FC = () => {
           </div>
         ) : !canMoveToTile() && !isPlayerOnTile() ? (
           <div className="mt-2 text-xs text-red-400">
-            Not enough AP to move here (need {terrain.moveCost || 1} AP)
+            {(() => {
+              let requiredAP = terrain.moveCost || 1;
+              if (terrain.requiredItem && currentPlayerStats) {
+                const hasRequiredItem = currentPlayerStats.items.some(item => item.id === terrain.requiredItem);
+                if (!hasRequiredItem) {
+                  requiredAP = terrain.alternativeAPCost || (terrain.moveCost + 1);
+                }
+              }
+              return `Not enough AP to move here (need ${requiredAP} AP)`;
+            })()}
           </div>
         ) : isPlayerOnTile() ? (
           <div className="mt-2 space-y-1">

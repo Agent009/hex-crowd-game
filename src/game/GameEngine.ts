@@ -9,6 +9,7 @@ import {
   isIsometricGrid, getHexPoints, DEFAULT_HEX_SIZE
 } from '../utils/hexGrid';
 import {terrainData, TerrainTypeData} from '../data/gameData';
+import { disasterData } from '../data/gameData';
 import { AtmosphericParticleSystem } from './ParticleSystem';
 import { GameAnimationSystem } from './AnimationSystem';
 
@@ -25,6 +26,7 @@ export class GameScene extends Phaser.Scene {
   private onTileHover?: (coords: CubeCoords | null) => void;
   private showPlayerNumbers: boolean = true;
   private isInitialized: boolean = false;
+  private disasterAnimations: Map<string, Phaser.GameObjects.Sprite> = new Map();
 
   constructor() {
     super({ key: 'GameScene' });
@@ -76,6 +78,9 @@ export class GameScene extends Phaser.Scene {
     // Initialize animation system
     this.animationSystem = new GameAnimationSystem(this, this.hexSize);
 
+    // Create disaster textures
+    this.createDisasterTextures();
+
     // Add keyboard controls
     const cursors = this.input.keyboard?.createCursorKeys();
     if (cursors) {
@@ -83,6 +88,43 @@ export class GameScene extends Phaser.Scene {
     }
 
     console.log('GameScene setup complete');
+  }
+
+  private createDisasterTextures() {
+    // Create earthquake texture
+    const earthquakeGraphics = this.add.graphics();
+    earthquakeGraphics.fillStyle(0x8B4513, 0.8);
+    earthquakeGraphics.fillRect(0, 0, 32, 32);
+    earthquakeGraphics.generateTexture('earthquake', 32, 32);
+    earthquakeGraphics.destroy();
+
+    // Create sandstorm texture
+    const sandstormGraphics = this.add.graphics();
+    sandstormGraphics.fillStyle(0xDEB887, 0.6);
+    earthquakeGraphics.fillCircle(16, 16, 16);
+    sandstormGraphics.generateTexture('sandstorm', 32, 32);
+    sandstormGraphics.destroy();
+
+    // Create wildfire texture
+    const wildfireGraphics = this.add.graphics();
+    wildfireGraphics.fillStyle(0xFF4500, 0.9);
+    wildfireGraphics.fillRect(0, 0, 32, 32);
+    wildfireGraphics.generateTexture('wildfire', 32, 32);
+    wildfireGraphics.destroy();
+
+    // Create tsunami texture
+    const tsunamiGraphics = this.add.graphics();
+    tsunamiGraphics.fillStyle(0x4682B4, 0.7);
+    tsunamiGraphics.fillRect(0, 0, 32, 32);
+    tsunamiGraphics.generateTexture('tsunami', 32, 32);
+    tsunamiGraphics.destroy();
+
+    // Create storm texture
+    const stormGraphics = this.add.graphics();
+    stormGraphics.fillStyle(0x483D8B, 0.8);
+    stormGraphics.fillRect(0, 0, 32, 32);
+    stormGraphics.generateTexture('storm', 32, 32);
+    stormGraphics.destroy();
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -167,7 +209,7 @@ export class GameScene extends Phaser.Scene {
         case 'plains': terrainSymbol = '💎'; break;
         case 'forest': terrainSymbol = '🌲'; break;
       }
-      
+
       if (terrainSymbol) {
         this.add.text(pixel.x, pixel.y, terrainSymbol, {
           fontSize: '16px',
@@ -189,7 +231,7 @@ export class GameScene extends Phaser.Scene {
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
       tile.players.forEach((player, index) => {
         const offsetY = index * 20 - (tile.players!.length - 1) * 10;
-        
+
         // Player number circle
         const playerText = this.add.text(pixel.x, pixel.y + offsetY, player.number.toString(), {
           fontSize: '14px',
@@ -197,13 +239,13 @@ export class GameScene extends Phaser.Scene {
           backgroundColor: '#DC2626',
           padding: { x: 6, y: 4 }
         }).setOrigin(0.5).setDepth(1010);
-        
+
         // Make it circular
         playerText.setStyle({
           ...playerText.style,
           borderRadius: '50%'
         });
-        
+
         this.playerNumbers.set(`${key}_${player.id}`, playerText);
       });
     }
@@ -504,6 +546,37 @@ export class GameScene extends Phaser.Scene {
   public setZoom(zoom: number) {
     this.cameras.main.setZoom(zoom);
     this.particleSystem.setZoomLevel(zoom);
+  }
+
+  // Method to trigger disaster animation
+  public triggerDisasterAnimation(disasterId: string, affectedTiles: CubeCoords[]) {
+    const disaster = disasterData[disasterId];
+    if (!disaster) return;
+
+    // Screen shake for earthquakes
+    if (disasterId === 'earthquake') {
+      this.cameras.main.shake(500, 0.02);
+    }
+
+    // Create disaster sprites on affected tiles
+    affectedTiles.forEach(coords => {
+      const pixel = cubeToPixel(coords, this.hexSize);
+      const sprite = this.add.sprite(pixel.x, pixel.y, disasterId);
+      sprite.setDepth(1500);
+      sprite.setAlpha(0.8);
+
+      // Animate the disaster effect
+      this.tweens.add({
+        targets: sprite,
+        alpha: { from: 0.8, to: 0 },
+        scale: { from: 1, to: 1.5 },
+        duration: 2000,
+        ease: 'Power2',
+        onComplete: () => {
+          sprite.destroy();
+        }
+      });
+    });
   }
 
   // Method to update event handlers from React

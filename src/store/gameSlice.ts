@@ -49,9 +49,11 @@ export interface PlayerStats {
   resources: { [resourceId: string]: number };
   items: ItemData[];
   crests: number;
+  statusEffects: string[]; // Active status effects
 }
 
 import { ItemData } from '../data/harvestData';
+import { terrainData, disasterData } from '../data/gameData';
 
 const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
   const tiles: { [key: string]: HexTile } = {};
@@ -176,7 +178,8 @@ const gameSlice = createSlice({
         coins: 0,
         resources: {},
         items: [],
-        crests: 0
+        crests: 0,
+        statusEffects: []
       };
 
       // Set as current player if first to join
@@ -265,17 +268,35 @@ const gameSlice = createSlice({
 
       if (!player || !playerStats) return;
 
-      // Calculate movement cost based on target terrain
+      // Get terrain data for movement requirements
       const targetTileKey = coordsToKey(target);
       const targetTile = state.tiles[targetTileKey];
       if (!targetTile) return;
 
-      const movementCost = targetTile.terrain === 'lake' ? 2 :
-                          targetTile.terrain === 'river' ? 2 :
-                          targetTile.terrain === 'mountain' ? 3 :
-                          targetTile.terrain === 'desert' ? 2 :
-                          targetTile.terrain === 'forest' ? 2 :
-                          1; // plains
+      const terrain = terrainData[targetTile.terrain];
+      let movementCost = terrain.moveCost;
+      let itemUsed = false;
+
+      // Check if terrain requires a specific item
+      if (terrain.requiredItem) {
+        const requiredItemIndex = playerStats.items.findIndex(item => item.id === terrain.requiredItem);
+
+        if (requiredItemIndex !== -1) {
+          // Player has the required item - use it
+          const item = playerStats.items[requiredItemIndex];
+          item.minUses -= 1;
+          item.maxUses -= 1;
+          itemUsed = true;
+
+          // Remove item if no uses left
+          if (item.minUses <= 0) {
+            playerStats.items.splice(requiredItemIndex, 1);
+          }
+        } else {
+          // Player doesn't have required item - pay extra AP
+          movementCost = terrain.alternativeAPCost || (terrain.moveCost + 1);
+        }
+      }
 
       // Check if player has enough AP
       if (playerStats.actionPoints < movementCost) {
@@ -285,6 +306,10 @@ const gameSlice = createSlice({
       // Deduct AP for movement
       playerStats.actionPoints -= movementCost;
 
+      // Add status effect for item usage (for UI feedback)
+      if (itemUsed) {
+        playerStats.statusEffects.push(`Used ${terrain.requiredItem}`);
+      }
       // Remove player from current tile
       const currentTileKey = coordsToKey(player.position);
       if (state.tiles[currentTileKey]?.players) {
@@ -315,6 +340,132 @@ const gameSlice = createSlice({
       state.players.forEach(player => {
         if (state.playerStats[player.id]) {
           state.playerStats[player.id].actionPoints += 2;
+          // Clear status effects from previous round
+          state.playerStats[player.id].statusEffects = [];
+        }
+      });
+
+      // Apply terrain effects at end of round
+      state.players.forEach(player => {
+        const playerStats = state.playerStats[player.id];
+        if (!playerStats) return;
+
+        const tileKey = coordsToKey(player.position);
+        const tile = state.tiles[tileKey];
+        if (!tile) return;
+
+        const terrain = terrainData[tile.terrain];
+        const effects = terrain.effects;
+
+        if (effects?.hpLossPerRound) {
+          let takeDamage = true;
+
+          // Check for protection item
+          if (effects.protectionItem) {
+            const protectionItemIndex = playerStats.items.findIndex(item => item.id === effects.protectionItem);
+            if (protectionItemIndex !== -1) {
+              takeDamage = false;
+              // Don't consume protection items automatically - they provide ongoing protection
+            }
+          }
+
+          // Check for protection resource
+          if (effects.protectionResource && takeDamage) {
+            const resourceAmount = playerStats.resources[effects.protectionResource] || 0;
+            if (resourceAmount > 0) {
+              playerStats.resources[effects.protectionResource] -= 1;
+              takeDamage = false;
+              playerStats.statusEffects.push(`Consumed ${effects.protectionResource}`);
+            }
+          }
+
+          if (takeDamage) {
+            playerStats.hp = Math.max(0, playerStats.hp + effects.hpLossPerRound);
+            playerStats.statusEffects.push(`Lost ${Math.abs(effects.hpLossPerRound)} HP from ${terrain.name}`);
+          }
+        }
+      });
+
+      // Apply disasters
+      const terrainPlayerCounts: { [terrain: string]: number } = {};
+      const terrainTotalCounts: { [terrain: string]: number } = {};
+
+      // Count players per terrain and total tiles per terrain
+      Object.values(state.tiles).forEach(tile => {
+        const terrain = tile.terrain;
+        terrainTotalCounts[terrain] = (terrainTotalCounts[terrain] || 0) + 1;
+
+        if (tile.players && tile.players.length > 0) {
+          terrainPlayerCounts[terrain] = (terrainPlayerCounts[terrain] || 0) + tile.players.length;
+        }
+      });
+
+      // Calculate disaster chances and apply disasters
+      Object.entries(terrainPlayerCounts).forEach(([terrain, playerCount]) => {
+        const totalTiles = terrainTotalCounts[terrain] || 1;
+        const disasterChance = Math.min(50, (playerCount / totalTiles) * 100);
+
+        // Roll for disaster (simplified - using 50% threshold for demo)
+        if (Math.random() * 100 < disasterChance) {
+          const terrainInfo = terrainData[terrain as TerrainType];
+          const possibleDisasters = terrainInfo.disasters || [];
+
+          if (possibleDisasters.length > 0) {
+            const disaster = possibleDisasters[Math.floor(Math.random() * possibleDisasters.length)];
+            const disasterInfo = disasterData[disaster];
+
+            if (disasterInfo) {
+              // Apply disaster effects to all players on affected terrain
+              state.players.forEach(player => {
+                const tileKey = coordsToKey(player.position);
+                const tile = state.tiles[tileKey];
+                if (tile && tile.terrain === terrain) {
+                  const damage = disasterInfo.effects[terrain];
+                  if (damage < 0) {
+                    const playerStats = state.playerStats[player.id];
+                    if (playerStats) {
+                      playerStats.hp = Math.max(0, playerStats.hp + damage);
+                      playerStats.statusEffects.push(`${disasterInfo.name}: ${Math.abs(damage)} damage`);
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
+      });
+
+      // Remove eliminated players (0 HP)
+      const eliminatedPlayers = state.players.filter(player => {
+        const stats = state.playerStats[player.id];
+        return stats && stats.hp <= 0;
+      });
+
+      eliminatedPlayers.forEach(player => {
+        // Remove from team
+        const team = state.teams.find(t => t.id === player.teamId);
+        if (team) {
+          team.playerIds = team.playerIds.filter(id => id !== player.id);
+        }
+
+        // Remove from tile
+        const tileKey = coordsToKey(player.position);
+        if (state.tiles[tileKey]?.players) {
+          state.tiles[tileKey].players = state.tiles[tileKey].players!.filter(p => p.id !== player.id);
+        }
+
+        // Remove from players array
+        const playerIndex = state.players.findIndex(p => p.id === player.id);
+        if (playerIndex !== -1) {
+          state.players.splice(playerIndex, 1);
+        }
+
+        // Remove player stats
+        delete state.playerStats[player.id];
+
+        // Update current player if needed
+        if (state.currentPlayer?.id === player.id) {
+          state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
         }
       });
     },

@@ -4,6 +4,7 @@ import { RootState } from '../../store/store';
 import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers, setCurrentPlayer } from '../../store/gameSlice';
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
+import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
 import {
   Users,
   Trophy,
@@ -254,6 +255,12 @@ export const PartyGameHUD: React.FC = () => {
 
       {/* Harvest Grid */}
       {showHarvestGrid && <HarvestGrid />}
+
+      {/* Status Effects Display */}
+      <StatusEffectsDisplay />
+
+      {/* Player Status Bar */}
+      <PlayerStatusBar />
 
       {/* Test Mode Controls */}
       {isTestMode && showTestControls && (
