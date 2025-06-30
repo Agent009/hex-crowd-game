@@ -19,7 +19,10 @@ import {
   Pause,
   Package,
   TestTube,
-  UserCheck
+  UserCheck,
+  Heart,
+  Zap,
+  X
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -43,6 +46,9 @@ export const PartyGameHUD: React.FC = () => {
   const [showTestControls, setShowTestControls] = useState(false);
   const [showTeamScores, setShowTeamScores] = useState(false);
   const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting'>('resources');
+
+  // Get current player stats
+  const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
 
   // Phase timer effect
   useEffect(() => {

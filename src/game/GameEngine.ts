@@ -58,6 +58,9 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(1);
     this.cameras.main.centerOn(0, 0);
 
+    // Make the game instance globally accessible for coordinate conversion
+    (window as any).phaserGame = this.game;
+
     if (isIsometricGrid) {
       // Adjust camera for better isometric viewing
       this.cameras.main.setRotation(0); // Keep rotation at 0 for true isometric
