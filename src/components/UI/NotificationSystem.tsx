@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
 import { ActivityLog } from './ActivityLog';
-import { RoundPhaseOverlay, useRoundPhases, GamePhase } from './RoundPhaseOverlay';
-import { 
-  Volume2, 
-  VolumeX, 
-  Settings, 
-  Eye, 
+import { RoundPhaseOverlay } from './RoundPhaseOverlay';
+import { GamePhase } from '../../store/gameSlice';
+import {
+  Volume2,
+  VolumeX,
+  Settings,
+  Eye,
   EyeOff,
   Bell,
   BellOff
@@ -22,7 +23,7 @@ interface NotificationSettings {
 }
 
 export const NotificationSystem: React.FC = () => {
-  const { roundNumber, gameMode } = useSelector((state: RootState) => state.game);
+  const { roundNumber, gameMode, currentPhase, showPhaseOverlay } = useSelector((state: RootState) => state.game);
   const [settings, setSettings] = useState<NotificationSettings>({
     soundEnabled: true,
     phaseOverlaysEnabled: true,
@@ -32,50 +33,33 @@ export const NotificationSystem: React.FC = () => {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [activityLogMinimized, setActivityLogMinimized] = useState(false);
-  
-  const {
-    currentPhase,
-    phaseStartTime,
-    showOverlay,
-    startPhase,
-    completePhase,
-    dismissOverlay
-  } = useRoundPhases();
-
-  // Demo phase progression for testing
-  useEffect(() => {
-    if (gameMode === 'playing' && settings.phaseOverlaysEnabled) {
-      // Start with round start phase
-      startPhase('round_start');
-    }
-  }, [roundNumber, gameMode, settings.phaseOverlaysEnabled]);
 
   // Sound effects for phase changes
   useEffect(() => {
-    if (settings.soundEnabled && showOverlay) {
+    if (settings.soundEnabled && showPhaseOverlay) {
       playPhaseSound(currentPhase);
     }
-  }, [currentPhase, showOverlay, settings.soundEnabled]);
+  }, [currentPhase, showPhaseOverlay, settings.soundEnabled]);
 
   const playPhaseSound = (phase: GamePhase) => {
     if (!settings.soundEnabled) return;
-    
+
     // Create audio context for sound effects
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
+
     const playTone = (frequency: number, duration: number, type: OscillatorType = 'sine') => {
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-      
+
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
+
       oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
       oscillator.type = type;
-      
+
       gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-      
+
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + duration);
     };
@@ -104,36 +88,15 @@ export const NotificationSystem: React.FC = () => {
   };
 
   const updateSetting = <K extends keyof NotificationSettings>(
-    key: K, 
+    key: K,
     value: NotificationSettings[K]
   ) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handlePhaseComplete = () => {
-    completePhase();
-    
-    // Demo: Auto-advance to next phase for testing
-    setTimeout(() => {
-      const phases: GamePhase[] = [
-        'round_start', 'ap_renewal', 'interaction', 'bartering', 
-        'terrain_effects', 'disaster_check', 'elimination', 'round_end'
-      ];
-      const currentIndex = phases.indexOf(currentPhase);
-      const nextPhase = phases[(currentIndex + 1) % phases.length];
-      
-      if (settings.phaseOverlaysEnabled) {
-        startPhase(nextPhase);
-      }
-    }, 1000);
-  };
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && showOverlay) {
-        dismissOverlay();
-      }
       if (event.key === 'l' && event.ctrlKey) {
         event.preventDefault();
         setActivityLogMinimized(!activityLogMinimized);
@@ -146,7 +109,7 @@ export const NotificationSystem: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showOverlay, activityLogMinimized, settings.soundEnabled]);
+  }, [activityLogMinimized, settings.soundEnabled]);
 
   if (gameMode !== 'playing') return null;
 
@@ -168,7 +131,7 @@ export const NotificationSystem: React.FC = () => {
               <Bell className="w-4 h-4 mr-2" />
               Notification Settings
             </h3>
-            
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-slate-300 text-sm">Sound Effects</span>
@@ -227,23 +190,17 @@ export const NotificationSystem: React.FC = () => {
       )}
 
       {/* Round Phase Overlay */}
-      {showOverlay && settings.phaseOverlaysEnabled && (
-        <RoundPhaseOverlay
-          currentPhase={currentPhase}
-          phaseStartTime={phaseStartTime}
-          onPhaseComplete={handlePhaseComplete}
-          onDismiss={dismissOverlay}
-          canDismiss={currentPhase === 'interaction'}
-        />
+      {settings.phaseOverlaysEnabled && (
+        <RoundPhaseOverlay />
       )}
 
       {/* Accessibility Announcements */}
-      <div 
-        className="sr-only" 
-        aria-live="polite" 
+      <div
+        className="sr-only"
+        aria-live="polite"
         aria-atomic="true"
       >
-        {showOverlay && `${currentPhase.replace('_', ' ')} phase started`}
+        {showPhaseOverlay && `${currentPhase.replace('_', ' ')} phase started`}
       </div>
     </>
   );

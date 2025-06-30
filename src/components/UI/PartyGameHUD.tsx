@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers, setCurrentPlayer } from '../../store/gameSlice';
+import { nextRound, endGame, toggleGrid, togglePlayerNumbers, setCurrentPlayer, updatePhaseTimer, dismissPhaseOverlay, forceNextPhase, phaseOrder, GamePhase } from '../../store/gameSlice';
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
@@ -32,30 +32,44 @@ export const PartyGameHUD: React.FC = () => {
     roundNumber,
     showGrid,
     showPlayerNumbers,
-    playerStats
+    playerStats,
+    currentPhase,
+    phaseTimer
   } = useSelector((state: RootState) => state.game);
 
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
   const [showTestControls, setShowTestControls] = useState(false);
 
-  // Game timer effect
+  // Phase timer effect
   useEffect(() => {
     if (gameMode === 'playing' && !isGamePaused) {
       const interval = setInterval(() => {
-        dispatch(updateGameTimer(gameTimer + 1));
+        dispatch(updatePhaseTimer());
       }, 1000);
 
       return () => clearInterval(interval);
     }
-  }, [gameMode, gameTimer, isGamePaused, dispatch]);
+  }, [gameMode, isGamePaused, dispatch]);
 
-  const formatTime = (seconds: number): string => {
+  const formatPhaseTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const getPhaseDisplayName = (phase: GamePhase): string => {
+    switch (phase) {
+      case 'round_start': return 'Round Start';
+      case 'ap_renewal': return 'AP Renewal';
+      case 'interaction': return 'Interaction Phase';
+      case 'bartering': return 'Bartering Phase';
+      case 'terrain_effects': return 'Terrain Effects';
+      case 'disaster_check': return 'Disaster Check';
+      case 'elimination': return 'Elimination Phase';
+      default: return phase;
+    }
+  };
   const handleEndGame = () => {
     dispatch(endGame());
   };
@@ -87,15 +101,40 @@ export const PartyGameHUD: React.FC = () => {
             <Crown className="w-6 h-6 text-yellow-400" />
             <div>
               <div className="text-white font-bold text-lg">Round {roundNumber}</div>
-              <div className="text-slate-300 text-sm">Party Game</div>
+              <div className="text-slate-300 text-sm">{getPhaseDisplayName(currentPhase)}</div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Timer className="w-5 h-5 text-blue-400" />
+          <div className="flex flex-col items-center space-y-1">
+            <div className="flex items-center space-x-1 text-blue-400 font-bold">
+              <Timer className="w-4 h-4" />
+              <span>{formatPhaseTime(phaseTimer)}</span>
+            </div>
+
+            {/* Phase Progress Dots */}
             <div>
-              <div className="text-white font-bold">{formatTime(gameTimer)}</div>
-              <div className="text-slate-400 text-xs">Game Time</div>
+              <div className="flex space-x-1">
+                {phaseOrder.map((phase, index) => {
+                  const currentIndex = phaseOrder.indexOf(currentPhase);
+                  const isCompleted = index < currentIndex;
+                  const isActive = index === currentIndex;
+                  const isUpcoming = index > currentIndex;
+
+                  return (
+                    <div
+                      key={phase}
+                      className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                        isCompleted 
+                          ? 'bg-green-500' 
+                          : isActive 
+                            ? 'bg-blue-500 ring-2 ring-blue-300 ring-opacity-50' 
+                            : 'bg-gray-600'
+                      }`}
+                      title={getPhaseDisplayName(phase)}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -114,16 +153,16 @@ export const PartyGameHUD: React.FC = () => {
           {sortedTeams.map((team, index) => (
             <div key={team.id} className="flex items-center space-x-2">
               <div className="flex items-center space-x-1">
-                <Trophy 
+                <Trophy
                   className={`w-4 h-4 ${
                     index === 0 ? 'text-yellow-400' : 
                     index === 1 ? 'text-gray-400' : 
                     'text-amber-600'
-                  }`} 
+                  }`}
                 />
                 <span className="text-white text-sm font-semibold">#{index + 1}</span>
               </div>
-              <div 
+              <div
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: team.color }}
               />
@@ -221,7 +260,7 @@ export const PartyGameHUD: React.FC = () => {
             <div className="flex items-center space-x-2">
               {teams.filter(t => t.playerIds.length > 0).map(team => (
                 <div key={team.id} className="flex items-center space-x-1">
-                  <div 
+                  <div
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: team.color }}
                   />
@@ -281,7 +320,7 @@ export const PartyGameHUD: React.FC = () => {
               ×
             </button>
           </div>
-          
+
           <div>
             <div className="text-orange-300 text-sm mb-2">Select Player to Control:</div>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
@@ -296,25 +335,36 @@ export const PartyGameHUD: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center space-x-1">
-                    <div 
+                    <div
                       className="w-3 h-3 rounded-full"
                       style={{ backgroundColor: '#DC2626' }}
-                    >
-                      <span className="text-white text-xs font-bold">
-                        {player.number}
-                      </span>
-                    </div>
-                    <span>{player.name}</span>
+                    />
+                    <span className="text-white text-xs font-bold">
+                      {player.number}
+                    </span>
                   </div>
-                  {playerStats[player.id] && (
-                    <div className="text-xs opacity-75">
-                      {playerStats[player.id].actionPoints} AP
-                    </div>
-                  )}
                 </button>
               ))}
             </div>
           </div>
+
+          {isTestMode && (
+            <button
+              onClick={() => dispatch(forceNextPhase())}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+            >
+              Next Phase
+            </button>
+          )}
+
+          {isTestMode && (
+            <button
+              onClick={handleEndGame}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+            >
+              End Game
+            </button>
+          )}
         </div>
       )}
     </div>

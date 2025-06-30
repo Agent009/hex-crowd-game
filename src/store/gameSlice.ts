@@ -35,6 +35,12 @@ export interface GameState {
   // Activity tracking
   activityEvents: ActivityEvent[];
   
+  // Round phase system
+  currentPhase: GamePhase;
+  phaseStartTime: number;
+  phaseTimer: number; // Countdown timer for current phase
+  showPhaseOverlay: boolean;
+
   // Tile states
   activeTiles: string[]; // Tiles that can be harvested from
 
@@ -45,6 +51,53 @@ export interface GameState {
   showPlayerNumbers: boolean;
 }
 
+export type GamePhase =
+  | 'round_start'
+  | 'ap_renewal'
+  | 'interaction'
+  | 'bartering'
+  | 'terrain_effects'
+  | 'disaster_check'
+  | 'elimination';
+
+export const phaseOrder: GamePhase[] = [
+  'round_start',
+  'ap_renewal',
+  'interaction',
+  'bartering',
+  'terrain_effects',
+  'disaster_check',
+  'elimination'
+];
+
+export const phaseDurations: Record<GamePhase, number> = {
+  round_start: 5,
+  ap_renewal: 5,
+  interaction: 30,
+  bartering: 30,
+  terrain_effects: 10,
+  disaster_check: 10,
+  elimination: 10
+};
+
+export const phaseOverlayDurations: Record<GamePhase, number> = {
+  round_start: 5,
+  ap_renewal: 5,
+  interaction: 5,
+  bartering: 30,
+  terrain_effects: 10,
+  disaster_check: 10,
+  elimination: 10
+};
+
+export const dismissiblePhases: GamePhase[] = [
+  'ap_renewal',
+  'interaction',
+  'bartering',
+  'terrain_effects',
+  'disaster_check',
+  'elimination'
+];
 export interface PlayerStats {
   hp: number;
   actionPoints: number;
@@ -137,6 +190,10 @@ const initialState: GameState = {
 
   activityEvents: [],
 
+  currentPhase: 'round_start',
+  phaseStartTime: 0,
+  phaseTimer: 0,
+  showPhaseOverlay: false,
   showGrid: true,
   cameraPosition: { x: 0, y: 0 },
   zoomLevel: 1,
@@ -269,6 +326,12 @@ const gameSlice = createSlice({
         state.gameTimer = 0;
         state.roundNumber = 1;
 
+        // Start the first phase
+        state.currentPhase = 'round_start';
+        state.phaseStartTime = Date.now();
+        state.phaseTimer = phaseDurations.round_start;
+        state.showPhaseOverlay = true;
+
         // Give all players +2 AP to start
         state.players.forEach(player => {
           if (state.playerStats[player.id]) {
@@ -352,7 +415,7 @@ const gameSlice = createSlice({
           state.tiles[newTileKey].players = [];
         }
         state.tiles[newTileKey].players!.push(player);
-        
+
         // Add activity event
         const terrain = terrainData[state.tiles[newTileKey].terrain];
         state.activityEvents.unshift({
@@ -375,7 +438,50 @@ const gameSlice = createSlice({
       state.gameTimer = action.payload;
     },
 
+    updatePhaseTimer: (state) => {
+      if (state.phaseTimer > 0) {
+        state.phaseTimer -= 1;
+      }
+
+      // Auto-advance phase when timer reaches 0
+      if (state.phaseTimer <= 0) {
+        const currentIndex = phaseOrder.indexOf(state.currentPhase);
+        const nextIndex = (currentIndex + 1) % phaseOrder.length;
+
+        if (nextIndex === 0) {
+          // Completed all phases, start next round
+          state.roundNumber += 1;
+
+          // Give all players +2 AP at start of each round
+          state.players.forEach(player => {
+            if (state.playerStats[player.id]) {
+              state.playerStats[player.id].actionPoints += 2;
+              // Clear status effects from previous round
+              state.playerStats[player.id].statusEffects = [];
+            }
+          });
+        }
+
+        const nextPhase = phaseOrder[nextIndex];
+        state.currentPhase = nextPhase;
+        state.phaseStartTime = Date.now();
+        state.phaseTimer = phaseDurations[nextPhase];
+        state.showPhaseOverlay = true;
+      }
+    },
+
+    dismissPhaseOverlay: (state) => {
+      if (dismissiblePhases.includes(state.currentPhase)) {
+        state.showPhaseOverlay = false;
+      }
+    },
+
+    forceNextPhase: (state) => {
+      // For test mode - force advance to next phase
+      state.phaseTimer = 0;
+    },
     nextRound: (state) => {
+      // Legacy action - now handled by phase system
       state.roundNumber += 1;
 
       // Give all players +2 AP at start of each round
@@ -568,7 +674,7 @@ const gameSlice = createSlice({
         }
         tile.isActive = false;
       }
-      
+
       // Add activity event
       if (isItem && itemId) {
         const itemTemplate = itemDatabase.find(item => item.id === itemId);
@@ -596,7 +702,7 @@ const gameSlice = createSlice({
           details: { resource: resourceId }
         });
       }
-      
+
       // Keep only last 50 events
       state.activityEvents = state.activityEvents.slice(0, 50);
     },
@@ -653,7 +759,7 @@ const gameSlice = createSlice({
 
       // Add crafted item to player's inventory
       playerStats.items.push(craftedItem);
-      
+
       // Add activity event
       state.activityEvents.unshift({
         id: `${Date.now()}_${Math.random()}`,
@@ -665,7 +771,7 @@ const gameSlice = createSlice({
         message: `${player?.name || 'Unknown'} crafted ${itemTemplate.name}`,
         details: { item: itemTemplate.name }
       });
-      
+
       // Keep only last 50 events
       state.activityEvents = state.activityEvents.slice(0, 50);
     },
@@ -697,6 +803,9 @@ export const {
   selectTile,
   movePlayer,
   updateGameTimer,
+  updatePhaseTimer,
+  dismissPhaseOverlay,
+  forceNextPhase,
   nextRound,
   setCurrentPlayer,
   harvestFromTile,
