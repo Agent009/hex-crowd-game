@@ -7,6 +7,7 @@ import { GameCanvas } from './GameCanvas';
 import { GameLobby } from './UI/GameLobby';
 import { PartyGameHUD } from './UI/PartyGameHUD';
 import { TileInfo } from './UI/TileInfo';
+import { BoltLogo } from './UI/BoltLogo';
 
 const GameContent: React.FC = () => {
   const { gameMode } = useSelector((state: RootState) => state.game);
@@ -17,6 +18,9 @@ const GameContent: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen bg-slate-900 overflow-hidden">
+      {/* Bolt Logo */}
+      <BoltLogo />
+
       {/* Main Game Canvas */}
       <GameCanvas className="absolute inset-0" />
 

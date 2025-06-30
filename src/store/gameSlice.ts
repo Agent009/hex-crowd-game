@@ -273,14 +273,18 @@ const applyDisasterCheck = (state: GameState) => {
       terrainPlayerCounts[terrain] = (terrainPlayerCounts[terrain] || 0) + tile.players.length;
     }
   });
+  console.log("gameSlice > applyDisasterCheck > playerCounts", terrainPlayerCounts, "total", terrainTotalCounts);
 
   // Calculate disaster chances and apply disasters
   Object.entries(terrainPlayerCounts).forEach(([terrain, playerCount]) => {
+    // Roll for disaster (simplified - using 50% threshold for demo)
     const totalTiles = terrainTotalCounts[terrain] || 1;
     const disasterChance = Math.min(50, (playerCount / totalTiles) * 100);
+    const disasterRoll = Math.floor(Math.random() * 100);
+    const disasterOccurred = disasterRoll <= disasterChance;
+    console.log(`gameSlice > applyDisasterCheck [${terrain} - ${playerCount} players ${totalTiles} tiles] > occurred [chance/roll]`, disasterOccurred, `${disasterChance} / ${disasterRoll}`);
 
-    // Roll for disaster (simplified - using 50% threshold for demo)
-    if (Math.random() * 100 < disasterChance) {
+    if (disasterOccurred) {
       const terrainInfo = terrainData[terrain as TerrainType];
       const possibleDisasters = terrainInfo.disasters || [];
 
@@ -289,6 +293,25 @@ const applyDisasterCheck = (state: GameState) => {
         const disasterInfo = disasterData[disaster];
 
         if (disasterInfo) {
+          // Add the general disaster event
+          state.activityEvents.unshift({
+            id: `${Date.now()}_${Math.random()}`,
+            timestamp: Date.now(),
+            type: 'disaster',
+            message: `${disasterInfo.name} struck ${terrain} terrain!`,
+            details: {
+              disaster: disasterInfo.name,
+              terrain: terrain,
+              affectedPlayers: state.players
+                .filter(p => {
+                  const tileKey = coordsToKey(p.position);
+                  const tile = state.tiles[tileKey];
+                  return tile && tile.terrain === terrain;
+                })
+                .map(p => p.name)
+            }
+          });
+
           // Apply disaster effects to all players on affected terrain
           state.players.forEach(player => {
             const tileKey = coordsToKey(player.position);
@@ -318,25 +341,6 @@ const applyDisasterCheck = (state: GameState) => {
                   });
                 }
               }
-            }
-          });
-
-          // Add the general disaster event
-          state.activityEvents.unshift({
-            id: `${Date.now()}_${Math.random()}`,
-            timestamp: Date.now(),
-            type: 'disaster',
-            message: `${disasterInfo.name} struck ${terrain} terrain!`,
-            details: {
-              disaster: disasterInfo.name,
-              terrain: terrain,
-              affectedPlayers: state.players
-                .filter(p => {
-                  const tileKey = coordsToKey(p.position);
-                  const tile = state.tiles[tileKey];
-                  return tile && tile.terrain === terrain;
-                })
-                .map(p => p.name)
             }
           });
         }
@@ -804,7 +808,7 @@ const gameSlice = createSlice({
                 }
 
                 if (takeDamage) {
-                  playerStats.hp = Math.max(0, playerStats.hp + takeDamage);
+                  playerStats.hp = Math.max(0, playerStats.hp - takeDamage);
                   statusMessage = `Lost ${Math.abs(takeDamage)} HP from ${terrain.name}`;
                   playerStats.statusEffects.push(statusMessage);
                   state.activityEvents.unshift({
