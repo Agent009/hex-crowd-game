@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { nextRound, endGame, toggleGrid, togglePlayerNumbers, setCurrentPlayer, updatePhaseTimer, dismissPhaseOverlay, forceNextPhase, phaseOrder, GamePhase } from '../../store/gameSlice';
+import {
+  nextRound,
+  endGame,
+  toggleGrid,
+  togglePlayerNumbers,
+  setCurrentPlayer,
+  updatePhaseTimer,
+  forceNextPhase,
+  phaseOrder,
+  toggleTileInfo, getPhaseDisplayName
+} from '../../store/gameSlice';
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
@@ -19,7 +29,6 @@ import {
   Pause,
   Package,
   TestTube,
-  UserCheck,
   Heart,
   Zap,
   X
@@ -32,7 +41,6 @@ export const PartyGameHUD: React.FC = () => {
     teams,
     currentPlayer,
     gameMode,
-    gameTimer,
     roundNumber,
     showGrid,
     showPlayerNumbers,
@@ -67,18 +75,6 @@ export const PartyGameHUD: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getPhaseDisplayName = (phase: GamePhase): string => {
-    switch (phase) {
-      case 'round_start': return 'Round Start';
-      case 'ap_renewal': return 'AP Renewal';
-      case 'interaction': return 'Interaction Phase';
-      case 'bartering': return 'Bartering Phase';
-      case 'terrain_effects': return 'Terrain Effects';
-      case 'disaster_check': return 'Disaster Check';
-      case 'elimination': return 'Elimination Phase';
-      default: return phase;
-    }
-  };
   const handleEndGame = () => {
     dispatch(endGame());
   };
@@ -136,7 +132,7 @@ export const PartyGameHUD: React.FC = () => {
                   const currentIndex = phaseOrder.indexOf(currentPhase);
                   const isCompleted = index < currentIndex;
                   const isActive = index === currentIndex;
-                  const isUpcoming = index > currentIndex;
+                  // const isUpcoming = index > currentIndex;
 
                   return (
                     <div

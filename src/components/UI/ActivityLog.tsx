@@ -95,7 +95,9 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
     { id: 'healing', label: 'Healing', color: 'text-green-400' },
     { id: 'disaster', label: 'Disasters', color: 'text-red-500' },
     { id: 'elimination', label: 'Eliminations', color: 'text-red-600' },
-    { id: 'round_start', label: 'Round Events', color: 'text-cyan-400' }
+    { id: 'round_start', label: 'Round Events', color: 'text-cyan-400' },
+    { id: 'phase_change', label: 'Phase Changes', color: 'text-blue-400' },
+    { id: 'phase_effect', label: 'Phase Effects', color: 'text-blue-400' }
   ];
 
   const toggleFilter = (eventType: string) => {
