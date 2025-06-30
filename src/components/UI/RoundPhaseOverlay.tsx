@@ -10,9 +10,7 @@ import {
   TrendingUp,
   Skull,
   Play,
-  Pause,
   X,
-  CheckCircle,
   Timer,
   Coins,
   MapPin,
@@ -26,6 +24,7 @@ interface PhaseData {
   description: string;
   icon: React.ComponentType<any>;
   color: string;
+  barColor: string;
   bgColor: string;
 }
 
@@ -35,6 +34,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'A new round begins. Prepare for action!',
     icon: Play,
     color: 'text-cyan-400',
+    barColor: 'bg-cyan-400',
     bgColor: 'bg-cyan-900'
   },
   ap_renewal: {
@@ -42,6 +42,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'All players receive +2 Action Points',
     icon: Zap,
     color: 'text-yellow-400',
+    barColor: 'bg-yellow-400',
     bgColor: 'bg-yellow-900'
   },
   interaction: {
@@ -49,6 +50,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'Players can move, harvest, craft, and use items',
     icon: Users,
     color: 'text-blue-400',
+    barColor: 'bg-blue-400',
     bgColor: 'bg-blue-900'
   },
   bartering: {
@@ -56,6 +58,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'Trade negotiations and resource exchanges',
     icon: Coins,
     color: 'text-green-400',
+    barColor: 'bg-green-400',
     bgColor: 'bg-green-900'
   },
   terrain_effects: {
@@ -63,6 +66,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'Environmental effects applied to all players',
     icon: TrendingUp,
     color: 'text-purple-400',
+    barColor: 'bg-purple-400',
     bgColor: 'bg-purple-900'
   },
   disaster_check: {
@@ -70,6 +74,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'Rolling for natural disasters and catastrophes',
     icon: AlertTriangle,
     color: 'text-orange-400',
+    barColor: 'bg-orange-400',
     bgColor: 'bg-orange-900'
   },
   elimination: {
@@ -77,6 +82,7 @@ const phaseDefinitions: Record<GamePhase, PhaseData> = {
     description: 'Removing players with 0 HP from the game',
     icon: Skull,
     color: 'text-red-400',
+    barColor: 'bg-red-400',
     bgColor: 'bg-red-900'
   }
 };
@@ -96,6 +102,7 @@ export const RoundPhaseOverlay: React.FC = () => {
 
   const [isVisible, setIsVisible] = useState(true);
   const [overlayTimer, setOverlayTimer] = useState(0);
+  const [timerPhase, setTimerPhase] = useState<GamePhase | null>(null);
 
   const phaseData = phaseDefinitions[currentPhase];
   const canDismiss = dismissiblePhases.includes(currentPhase);
@@ -135,8 +142,16 @@ export const RoundPhaseOverlay: React.FC = () => {
     if (showPhaseOverlay) {
       setIsVisible(true);
       setOverlayTimer(overlayDuration);
+      setTimerPhase(currentPhase); // Store which phase started this timer
     }
-  }, [showPhaseOverlay, overlayDuration]);
+  }, [showPhaseOverlay, overlayDuration, currentPhase]);
+
+  useEffect(() => {
+    // Reset the timer and visibility when the phase changes
+    setIsVisible(true);
+    setOverlayTimer(overlayDuration);
+    setTimerPhase(currentPhase);
+  }, [currentPhase, overlayDuration]);
 
   useEffect(() => {
     if (!showPhaseOverlay || !isVisible) return;
@@ -144,9 +159,11 @@ export const RoundPhaseOverlay: React.FC = () => {
     const interval = setInterval(() => {
       setOverlayTimer(prev => {
         if (prev <= 1) {
-          // Auto-dismiss overlay when timer reaches 0
-          setIsVisible(false);
-          setTimeout(() => dispatch(dismissPhaseOverlay()), 300);
+          // Only auto-dismiss if we're still showing the same phase that started this timer
+          if (timerPhase === currentPhase) {
+            setIsVisible(false);
+            setTimeout(() => dispatch(dismissPhaseOverlay()), 300);
+          }
           return 0;
         }
         return prev - 1;
@@ -154,7 +171,7 @@ export const RoundPhaseOverlay: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [showPhaseOverlay, isVisible, dispatch]);
+  }, [showPhaseOverlay, isVisible, dispatch, currentPhase, timerPhase]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -198,6 +215,7 @@ export const RoundPhaseOverlay: React.FC = () => {
   };
 
   const phaseProgress = Math.max(0, ((phaseDuration - phaseTimer) / phaseDuration) * 100);
+  // console.log("Phase progress: ", phaseProgress, "phaseDuration", phaseDuration, "phaseTimer", phaseTimer);
 
   const getPhaseSpecificInfo = () => {
     switch (currentPhase) {
@@ -210,7 +228,7 @@ export const RoundPhaseOverlay: React.FC = () => {
         );
 
       case 'interaction':
-        const activePlayers = players.filter(p => {
+        { const activePlayers = players.filter(p => {
           const stats = playerStats[p.id];
           return stats && stats.hp > 0;
         });
@@ -219,7 +237,7 @@ export const RoundPhaseOverlay: React.FC = () => {
             <div className="text-2xl font-bold text-blue-300 mb-2">{activePlayers.length}</div>
             <div className="text-blue-100">Active players can take actions</div>
           </div>
-        );
+        ); }
 
       case 'bartering':
         return (
@@ -230,16 +248,16 @@ export const RoundPhaseOverlay: React.FC = () => {
         );
 
       case 'terrain_effects':
-        const playersOnDangerousTerrain = players.filter(p => {
+        { const playersOnDangerousTerrain = players.filter(p => {
           const stats = playerStats[p.id];
           return stats && stats.hp > 0; // Simplified check
         });
         return (
           <div className="text-center">
             <div className="text-2xl font-bold text-purple-300 mb-2">{playersOnDangerousTerrain.length}</div>
-            <div className="text-purple-100">Players affected by terrain</div>
+            <div className="text-purple-100">Players may be affected by terrain</div>
           </div>
-        );
+        ); }
 
       case 'disaster_check':
         return (
@@ -250,7 +268,7 @@ export const RoundPhaseOverlay: React.FC = () => {
         );
 
       case 'elimination':
-        const eliminatedPlayers = players.filter(p => {
+        { const eliminatedPlayers = players.filter(p => {
           const stats = playerStats[p.id];
           return stats && stats.hp <= 0;
         });
@@ -271,7 +289,7 @@ export const RoundPhaseOverlay: React.FC = () => {
               </>
             )}
           </div>
-        );
+        ); }
 
       default:
         return null;
@@ -312,7 +330,7 @@ export const RoundPhaseOverlay: React.FC = () => {
         <div className="mb-6">
           <div className="w-full bg-gray-700 bg-opacity-50 rounded-full h-3">
             <div
-              className={`h-3 rounded-full transition-all duration-300 ${phaseData.color.replace('text-', 'bg-')}`}
+              className={`h-3 rounded-full transition-all duration-300 ${phaseData.barColor}`}
               style={{ width: `${phaseProgress}%` }}
             />
           </div>

@@ -574,13 +574,6 @@ const gameSlice = createSlice({
           message: `Game started! Round ${state.roundNumber} begins`,
           details: {}
         });
-
-        // Give all players +2 AP to start
-        state.players.forEach(player => {
-          if (state.playerStats[player.id]) {
-            state.playerStats[player.id].actionPoints += 2;
-          }
-        });
       }
     },
 
