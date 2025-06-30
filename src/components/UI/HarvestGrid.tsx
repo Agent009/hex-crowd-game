@@ -107,8 +107,10 @@ export const HarvestGrid: React.FC = () => {
       return;
     }
 
-    const item = harvestGrid.harvestItem(slotIndex);
-    if (item) {
+    // Find the item in the database by index (only top 3 items are available)
+    if (slotIndex >= 0 && slotIndex < 3 && slotIndex < itemDatabase.length) {
+      const item = itemDatabase[slotIndex];
+
       // Dispatch harvest action to Redux
       dispatch(harvestFromTile({
         playerId: currentPlayer.id,
@@ -118,6 +120,8 @@ export const HarvestGrid: React.FC = () => {
       }));
 
       setGridKey(prev => prev + 1); // Force re-render
+    } else {
+      alert('Invalid item selection!');
     }
   };
 
@@ -386,7 +390,7 @@ export const HarvestGrid: React.FC = () => {
                   className={`p-3 rounded border transition-colors ${
                     isEnabled 
                       ? canHarvest
-                        ? 'bg-slate-600 border-purple-600 hover:bg-slate-500 cursor-pointer' 
+                        ? 'bg-purple-600 border-purple-500 hover:bg-purple-700 cursor-pointer' 
                         : 'bg-slate-700 border-slate-600'
                       : 'bg-slate-800 border-slate-700 opacity-40'
                   }`}

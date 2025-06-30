@@ -320,16 +320,18 @@ export class HarvestGrid {
   }
 
   public harvestItem(slotIndex: number): ItemData | null {
-    // Items can be harvested from any slot for 3 AP
-    for (const slot of this.slots) {
-      const itemIndex = slot.items.findIndex((item, index) => 
-        index === slotIndex && 'craftingRequirements' in item
-      );
-      
-      if (itemIndex !== -1) {
-        const item = slot.items.splice(itemIndex, 1)[0] as ItemData;
-        return item;
-      }
+    // Items are harvested directly from the item database (top 3 only)
+    if (slotIndex >= 0 && slotIndex < 3 && slotIndex < itemDatabase.length) {
+      const itemTemplate = itemDatabase[slotIndex];
+
+      // Generate item with random uses
+      const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
+
+      return {
+        ...itemTemplate,
+        minUses: uses,
+        maxUses: uses
+      };
     }
     
     return null;
