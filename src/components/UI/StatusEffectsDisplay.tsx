@@ -89,7 +89,7 @@ export const StatusEffectsDisplay: React.FC = () => {
   if (displayedEffects.length === 0) return null;
 
   return (
-    <div className="fixed top-32 left-4 z-50 space-y-2 max-w-sm">
+    <div className="fixed top-80 left-4 z-50 space-y-2 max-w-sm">
       {displayedEffects.map(effect => {
         const Icon = getEffectIcon(effect.type);
         const colorClass = getEffectColor(effect.type);
@@ -118,66 +118,5 @@ export const StatusEffectsDisplay: React.FC = () => {
   );
 };
 
-// Player HP and Status Bar Component
-export const PlayerStatusBar: React.FC = () => {
-  const { currentPlayer, playerStats } = useSelector((state: RootState) => state.game);
-
-  const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
-
-  if (!currentPlayer || !currentPlayerStats) return null;
-
-  const hpPercentage = (currentPlayerStats.hp / 10) * 100; // Assuming max HP is 10
-  const isLowHP = currentPlayerStats.hp <= 3;
-  const isDead = currentPlayerStats.hp <= 0;
-
-  return (
-    <div className="fixed top-20 left-4 z-40 bg-slate-800 rounded-lg p-3 shadow-lg border border-slate-600">
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-            isDead ? 'bg-red-800' : 'bg-red-600'
-          }`}>
-            {currentPlayer.number}
-          </div>
-          <div>
-            <div className="text-white font-semibold text-sm">{currentPlayer.name}</div>
-            <div className="text-slate-400 text-xs">Player #{currentPlayer.number}</div>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {isDead ? (
-            <div className="flex items-center space-x-1 text-red-400">
-              <Skull className="w-4 h-4" />
-              <span className="text-sm font-bold">ELIMINATED</span>
-            </div>
-          ) : (
-            <>
-              <Heart className={`w-4 h-4 ${isLowHP ? 'text-red-400' : 'text-red-500'}`} />
-              <div className="flex flex-col">
-                <span className={`text-sm font-bold ${isLowHP ? 'text-red-400' : 'text-white'}`}>
-                  {currentPlayerStats.hp}/10 HP
-                </span>
-                <div className="w-16 bg-slate-700 rounded-full h-1">
-                  <div
-                    className={`h-1 rounded-full transition-all duration-300 ${
-                      isLowHP ? 'bg-red-500' : 'bg-green-500'
-                    }`}
-                    style={{ width: `${hpPercentage}%` }}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="flex items-center space-x-1">
-            <Zap className="w-4 h-4 text-yellow-400" />
-            <span className="text-white text-sm font-bold">
-              {currentPlayerStats.actionPoints} AP
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+// Player status bar is now integrated into the main HUD
+export const PlayerStatusBar: React.FC = () => null;

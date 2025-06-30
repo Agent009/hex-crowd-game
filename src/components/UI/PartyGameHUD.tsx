@@ -6,6 +6,7 @@ import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
 import { NotificationSystem } from './NotificationSystem';
+import { HexActionMenu } from './HexActionMenu';
 import {
   Users,
   Trophy,
@@ -40,6 +41,8 @@ export const PartyGameHUD: React.FC = () => {
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
   const [showTestControls, setShowTestControls] = useState(false);
+  const [showTeamScores, setShowTeamScores] = useState(false);
+  const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting'>('resources');
 
   // Phase timer effect
   useEffect(() => {
@@ -82,6 +85,16 @@ export const PartyGameHUD: React.FC = () => {
     dispatch(setCurrentPlayer({ playerId }));
   };
 
+  const handleOpenHarvestGrid = (tab: 'resources' | 'items' | 'crafting') => {
+    setHarvestGridTab(tab);
+    setShowHarvestGrid(true);
+  };
+
+  const handleOpenTileInfo = () => {
+    // Tile info is always visible, this could scroll to it or highlight it
+    console.log('Open tile info');
+  };
+
   // Get top teams by score
   const sortedTeams = [...teams]
     .filter(team => team.playerIds.length > 0)
@@ -95,7 +108,7 @@ export const PartyGameHUD: React.FC = () => {
   return (
     <div className="absolute top-0 left-0 right-0 z-50 bg-gradient-to-b from-slate-800 to-slate-700 shadow-lg border-b border-slate-600">
       <div className="flex items-center justify-between p-4">
-        {/* Game Info */}
+        {/* Game Info - Left Side */}
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-2">
             <Crown className="w-6 h-6 text-yellow-400" />
@@ -147,32 +160,48 @@ export const PartyGameHUD: React.FC = () => {
           </div>
         </div>
 
-        {/* Leaderboard */}
+        {/* Center - Player Status */}
         <div className="flex items-center space-x-4">
-          <div className="text-slate-300 text-sm font-medium">Top Teams:</div>
-          {sortedTeams.map((team, index) => (
-            <div key={team.id} className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1">
-                <Trophy
-                  className={`w-4 h-4 ${
-                    index === 0 ? 'text-yellow-400' : 
-                    index === 1 ? 'text-gray-400' : 
-                    'text-amber-600'
-                  }`}
-                />
-                <span className="text-white text-sm font-semibold">#{index + 1}</span>
+          {currentPlayer && currentPlayerStats && (
+            <div className="flex items-center space-x-3 bg-slate-900 px-4 py-2 rounded-lg border border-slate-600">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                currentPlayerStats.hp <= 0 ? 'bg-red-800' : 'bg-red-600'
+              }`}>
+                {currentPlayer.number}
               </div>
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: team.color }}
-              />
-              <span className="text-white text-sm">{team.name}</span>
-              <span className="text-slate-300 text-sm">({team.score})</span>
+              <div>
+                <div className="text-white font-semibold text-sm">{currentPlayer.name}</div>
+                <div className="text-slate-400 text-xs">Player #{currentPlayer.number}</div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  <Heart className={`w-4 h-4 ${currentPlayerStats.hp <= 3 ? 'text-red-400' : 'text-red-500'}`} />
+                  <span className={`text-sm font-bold ${currentPlayerStats.hp <= 3 ? 'text-red-400' : 'text-white'}`}>
+                    {currentPlayerStats.hp}/10
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Zap className="w-4 h-4 text-yellow-400" />
+                  <span className="text-white text-sm font-bold">
+                    {currentPlayerStats.actionPoints}
+                  </span>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* Team Scores Button */}
+          <button
+            onClick={() => setShowTeamScores(!showTeamScores)}
+            className="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 px-3 py-2 rounded-lg border border-slate-600 transition-colors"
+            title="View Team Scores"
+          >
+            <Trophy className="w-4 h-4 text-yellow-400" />
+            <span className="text-white text-sm">Scores</span>
+          </button>
         </div>
 
-        {/* Controls */}
+        {/* Controls - Right Side */}
         <div className="flex items-center space-x-3">
           <button
             onClick={() => dispatch(toggleGrid())}
@@ -252,6 +281,36 @@ export const PartyGameHUD: React.FC = () => {
         </div>
       </div>
 
+      {/* Team Scores Popup */}
+      {showTeamScores && (
+        <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-slate-800 rounded-lg shadow-xl border border-slate-600 p-4 z-60 min-w-80">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-semibold flex items-center">
+              <Trophy className="w-4 h-4 mr-2 text-yellow-400" />
+              Team Leaderboard
+            </h3>
+            <button
+              onClick={() => setShowTeamScores(false)}
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {sortedTeams.map((team, index) => (
+              <div key={team.id} className="flex items-center justify-between bg-slate-700 p-2 rounded">
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-300">#{index + 1}</span>
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }} />
+                  <span className="text-white">{team.name}</span>
+                </div>
+                <span className="text-slate-300 font-semibold">{team.score} pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Player Status Bar */}
       <div className="bg-slate-900 border-t border-slate-600 px-4 py-2">
         <div className="flex items-center justify-between">
@@ -270,20 +329,6 @@ export const PartyGameHUD: React.FC = () => {
             </div>
           </div>
 
-          {currentPlayer && (
-            <div className="flex items-center space-x-2 bg-blue-900 px-3 py-1 rounded">
-              <UserCheck className="w-4 h-4 text-blue-400" />
-              <span className="text-blue-200 text-sm">
-                Playing as: {currentPlayer.name} (#{currentPlayer.number})
-              </span>
-              {playerStats[currentPlayer.id] && (
-                <span className="text-blue-300 text-sm">
-                  • {playerStats[currentPlayer.id].actionPoints} AP
-                </span>
-              )}
-            </div>
-          )}
-
           {isGamePaused && (
             <div className="flex items-center space-x-2 bg-yellow-900 px-3 py-1 rounded">
               <Pause className="w-4 h-4 text-yellow-400" />
@@ -294,7 +339,18 @@ export const PartyGameHUD: React.FC = () => {
       </div>
 
       {/* Harvest Grid */}
-      {showHarvestGrid && <HarvestGrid />}
+      {showHarvestGrid && (
+        <HarvestGrid
+          initialTab={harvestGridTab}
+          onClose={() => setShowHarvestGrid(false)}
+        />
+      )}
+
+      {/* Hex Action Menu */}
+      <HexActionMenu
+        onOpenHarvestGrid={handleOpenHarvestGrid}
+        onOpenTileInfo={handleOpenTileInfo}
+      />
 
       {/* Status Effects Display */}
       <StatusEffectsDisplay />

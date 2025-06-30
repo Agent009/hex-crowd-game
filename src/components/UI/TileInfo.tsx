@@ -4,7 +4,7 @@ import { RootState } from '../../store/store';
 import { movePlayer, harvestFromTile } from '../../store/gameSlice';
 import {coordsToKey, cubeToPixel, DEFAULT_HEX_SIZE} from '../../utils/hexGrid';
 import { terrainData, resourceData } from '../../data/gameData';
-import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle } from 'lucide-react';
+import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle, X } from 'lucide-react';
 
 export const TileInfo: React.FC = () => {
   const dispatch = useDispatch();
@@ -12,7 +12,7 @@ export const TileInfo: React.FC = () => {
 
   if (!selectedTile) {
     return (
-      <div className="absolute bottom-4 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600">
+      <div className="absolute top-20 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 z-30">
         <p className="text-slate-400 text-sm">Select a tile to view information</p>
       </div>
     );
@@ -23,7 +23,7 @@ export const TileInfo: React.FC = () => {
 
   if (!tile) {
     return (
-      <div className="absolute bottom-4 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600">
+      <div className="absolute top-20 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 z-30">
         <p className="text-slate-400 text-sm">Invalid tile selected</p>
       </div>
     );
@@ -119,14 +119,20 @@ export const TileInfo: React.FC = () => {
   };
 
   return (
-    <div className={`absolute bottom-4 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-20 ${
+    <div className={`absolute top-20 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-30 ${
       isPartiallyVisible ? 'opacity-75' : ''
     }`}>
-      <div className="flex items-center space-x-2 mb-3">
-        <MapPin className="w-4 h-4 text-blue-400" />
-        <h3 className="text-white font-semibold">
-          Hex ({selectedTile.q}, {selectedTile.r}, {selectedTile.s}) ({Math.round(x)}, {Math.round(y)})
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-white font-semibold flex items-center">
+          <MapPin className="w-4 h-4 mr-2 text-blue-400" />
+          Tile Information
         </h3>
+      </div>
+
+      <div className="flex items-center space-x-2 mb-3">
+        <span className="text-slate-300 text-sm">
+          Hex ({selectedTile.q}, {selectedTile.r}, {selectedTile.s}) ({Math.round(x)}, {Math.round(y)})
+        </span>
       </div>
 
       <div className="space-y-2 text-sm">
@@ -282,60 +288,23 @@ export const TileInfo: React.FC = () => {
 
       {/* Actions */}
       <div className="mt-4 pt-3 border-t border-slate-600">
-        <div className="grid grid-cols-1 gap-2">
-          <button
-            onClick={handleMoveHere}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!currentPlayer || !canMoveToTile() || isPlayerOnTile()}
-          >
-            Move Here
-          </button>
-
-          {isPlayerOnTile() && isActive && (
-            <>
-              <button
-                onClick={() => handleHarvest(false)}
-                className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                disabled={!currentPlayerStats || currentPlayerStats.actionPoints < 1}
-              >
-                <Package className="w-3 h-3 mr-1" />
-                Harvest Resource (1 AP)
-              </button>
-
-              <button
-                onClick={() => handleHarvest(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                disabled={!currentPlayerStats || currentPlayerStats.actionPoints < 3}
-              >
-                <Package className="w-3 h-3 mr-1" />
-                Harvest Item (3 AP)
-              </button>
-            </>
-          )}
+        <div className="text-slate-400 text-xs">
+          Click on the tile in the game world to see available actions
         </div>
 
-        {!currentPlayer ? (
+        {!currentPlayer && (
           <div className="mt-2 text-xs text-yellow-400">
-            No current player
+            No current player selected
           </div>
-        ) : currentPhase !== 'interaction' ? (
+        )}
+
+        {currentPlayer && currentPhase !== 'interaction' && (
           <div className="mt-2 text-xs text-orange-400">
-            Wait for Interaction Phase to take actions
+            Actions only available during Interaction Phase
           </div>
-        ) : !canMoveToTile() && !isPlayerOnTile() ? (
-          <div className="mt-2 text-xs text-red-400">
-            {(() => {
-              let requiredAP = terrain.moveCost || 1;
-              if (terrain.requiredItem && currentPlayerStats) {
-                const hasRequiredItem = currentPlayerStats.items.some(item => item.id === terrain.requiredItem);
-                if (!hasRequiredItem) {
-                  requiredAP = terrain.alternativeAPCost || (terrain.moveCost + 1);
-                }
-              }
-              return `Not enough AP to move here (need ${requiredAP} AP)`;
-            })()}
-          </div>
-        ) : isPlayerOnTile() ? (
+        )}
+
+        {currentPlayer && isPlayerOnTile() && (
           <div className="mt-2 space-y-1">
             {currentPlayerStats && (
               <div className="flex items-center space-x-2 text-xs">
@@ -355,7 +324,7 @@ export const TileInfo: React.FC = () => {
               </div>
             )}
           </div>
-        ) : null}
+        )}
 
         {currentPlayerStats && (
           <div className="mt-2 p-2 bg-slate-700 rounded text-xs">

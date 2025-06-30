@@ -24,6 +24,7 @@ import {
   Lock
 } from 'lucide-react';
 import {isCraftable} from "../../utils/utils.ts";
+import { X } from 'lucide-react';
 
 type TabType = 'resources' | 'items' | 'crafting';
 
