@@ -49,6 +49,7 @@ export interface GameState {
   cameraPosition: { x: number; y: number };
   zoomLevel: number;
   showPlayerNumbers: boolean;
+  showTileInfo: boolean;
 }
 
 export type GamePhase =
@@ -197,7 +198,8 @@ const initialState: GameState = {
   showGrid: true,
   cameraPosition: { x: 0, y: 0 },
   zoomLevel: 1,
-  showPlayerNumbers: true
+  showPlayerNumbers: true,
+  showTileInfo: false
 };
 
 /**
@@ -827,6 +829,10 @@ const gameSlice = createSlice({
 
     togglePlayerNumbers: (state) => {
       state.showPlayerNumbers = !state.showPlayerNumbers;
+    },
+
+    toggleTileInfo: (state) => {
+      state.showTileInfo = !state.showTileInfo;
     }
   }
 });
@@ -851,7 +857,8 @@ export const {
   setCameraPosition,
   setZoomLevel,
   toggleGrid,
-  togglePlayerNumbers
+  togglePlayerNumbers,
+  toggleTileInfo
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

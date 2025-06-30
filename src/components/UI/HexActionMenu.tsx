@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { movePlayer, selectTile } from '../../store/gameSlice';
+import { movePlayer, selectTile, toggleTileInfo } from '../../store/gameSlice';
 import { cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey } from '../../utils/hexGrid';
 import { terrainData } from '../../data/gameData';
 import {
@@ -29,10 +29,12 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     currentPlayer,
     playerStats,
     activeTiles,
-    currentPhase
+    currentPhase,
+    showPhaseOverlay
   } = useSelector((state: RootState) => state.game);
 
-  if (!selectedTile) return null;
+  // Hide menu when phase overlay is shown
+  if (!selectedTile || showPhaseOverlay) return null;
 
   const tileKey = coordsToKey(selectedTile);
   const tile = tiles[tileKey];
@@ -77,7 +79,21 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
         playerId: currentPlayer.id,
         target: selectedTile
       }));
+      // Clear selection after successful move
+      dispatch(selectTile(null));
     }
+  };
+
+  const handleAction = (actionFn: () => void, keepMenuActive: boolean = false) => {
+    return (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      actionFn();
+      // Clear selection after action unless we want to keep menu active
+      if (!keepMenuActive) {
+        dispatch(selectTile(null));
+      }
+    };
   };
 
   const actions = [
@@ -87,7 +103,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Move Here',
       color: 'bg-blue-600 hover:bg-blue-700',
       enabled: canMove(),
-      onClick: handleMove,
+      onClick: handleAction(handleMove),
       angle: -90 // Top
     },
     {
@@ -96,7 +112,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Harvest Resource',
       color: 'bg-green-600 hover:bg-green-700',
       enabled: canHarvest() && currentPlayerStats!.actionPoints >= 1,
-      onClick: () => onOpenHarvestGrid('resources'),
+      onClick: handleAction(() => onOpenHarvestGrid('resources'), true),
       angle: -30 // Top right
     },
     {
@@ -105,7 +121,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Harvest Item',
       color: 'bg-purple-600 hover:bg-purple-700',
       enabled: canHarvest() && currentPlayerStats!.actionPoints >= 3,
-      onClick: () => onOpenHarvestGrid('items'),
+      onClick: handleAction(() => onOpenHarvestGrid('items'), true),
       angle: 30 // Bottom right
     },
     {
@@ -114,7 +130,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Craft Item',
       color: 'bg-orange-600 hover:bg-orange-700',
       enabled: canCraft(),
-      onClick: () => onOpenHarvestGrid('crafting'),
+      onClick: handleAction(() => onOpenHarvestGrid('crafting'), true),
       angle: 90 // Bottom
     },
     {
@@ -123,7 +139,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Tile Info',
       color: 'bg-slate-600 hover:bg-slate-700',
       enabled: true,
-      onClick: onOpenTileInfo,
+      onClick: handleAction(() => dispatch(toggleTileInfo()), true),
       angle: 150 // Bottom left
     }
   ];
@@ -165,10 +181,10 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
   const screenY = canvasRect.top + (canvasRect.height / 2) + ((pixel.y - cameraY) * zoom);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[60]">
+    <div className="fixed inset-0 pointer-events-none z-[45]">
       {/* Center indicator */}
       <div
-        className="absolute w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto animate-pulse"
+        className="absolute w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse"
         style={{
           left: screenX,
           top: screenY,
@@ -195,7 +211,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
             }}
           >
             <button
-              onClick={action.onClick}
+              onMouseDown={action.onClick}
               disabled={!action.enabled}
               className={`
                 w-14 h-14 rounded-full shadow-xl border-2 border-white transition-all duration-200
@@ -211,7 +227,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
             </button>
 
             {/* Tooltip */}
-            <div className="absolute bg-black text-white px-2 py-1 rounded text-xs whitespace-nowrap z-[70] opacity-0 hover:opacity-100 transition-opacity pointer-events-none"
+            <div className="absolute bg-black text-white px-2 py-1 rounded text-xs whitespace-nowrap z-[50] opacity-0 hover:opacity-100 transition-opacity pointer-events-none"
                  style={{
                    bottom: '120%',
                    left: '50%',

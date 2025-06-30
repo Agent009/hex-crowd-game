@@ -8,13 +8,11 @@ import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle, X } from 'luci
 
 export const TileInfo: React.FC = () => {
   const dispatch = useDispatch();
-  const { selectedTile, tiles, players, currentPlayer, playerStats, activeTiles, currentPhase } = useSelector((state: RootState) => state.game);
+  const { selectedTile, tiles, players, currentPlayer, playerStats, activeTiles, currentPhase, showTileInfo } = useSelector((state: RootState) => state.game);
 
-  if (!selectedTile) {
+  if (!selectedTile || !showTileInfo) {
     return (
-      <div className="absolute top-20 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 z-30">
-        <p className="text-slate-400 text-sm">Select a tile to view information</p>
-      </div>
+      null
     );
   }
 

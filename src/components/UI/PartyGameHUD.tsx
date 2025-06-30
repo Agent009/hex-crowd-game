@@ -97,8 +97,7 @@ export const PartyGameHUD: React.FC = () => {
   };
 
   const handleOpenTileInfo = () => {
-    // Tile info is always visible, this could scroll to it or highlight it
-    console.log('Open tile info');
+    dispatch(toggleTileInfo());
   };
 
   // Get top teams by score

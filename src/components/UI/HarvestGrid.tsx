@@ -28,13 +28,26 @@ import { X } from 'lucide-react';
 
 type TabType = 'resources' | 'items' | 'crafting';
 
-export const HarvestGrid: React.FC = () => {
+interface HarvestGridProps {
+  initialTab?: TabType;
+  onClose?: () => void;
+}
+
+export const HarvestGrid: React.FC<HarvestGridProps> = ({
+  initialTab = 'resources',
+  onClose
+}) => {
   const dispatch = useDispatch();
   const { currentPlayer, currentPhase, playerStats, selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.game);
 
   const [harvestGrid] = useState(() => new HarvestGridClass());
-  const [activeTab, setActiveTab] = useState<TabType>('resources');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [gridKey, setGridKey] = useState(0);
+
+  // Update active tab when initialTab changes
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
   const selectedTileKey = selectedTile ? coordsToKey(selectedTile) : null;
@@ -422,6 +435,17 @@ export const HarvestGrid: React.FC = () => {
 
   return (
     <div className="fixed top-20 right-4 w-96 bg-slate-800 rounded-lg shadow-xl border border-slate-600 z-40 max-h-[calc(100vh-6rem)] overflow-hidden flex">
+      {/* Close button */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 z-50 text-slate-400 hover:text-white transition-colors bg-slate-700 hover:bg-slate-600 rounded-full p-1"
+          title="Close Harvest Grid"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Vertical Tab Icons */}
       <div className="flex flex-col bg-slate-900 rounded-l-lg border-r border-slate-600">
         {tabs.map((tab) => {
