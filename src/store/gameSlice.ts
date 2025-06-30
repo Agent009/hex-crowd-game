@@ -131,6 +131,7 @@ export interface ActivityEvent {
   id: string;
   timestamp: number;
   type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect';
+  subtype?: 'ap_renewal' | 'terrain_effect' | 'disaster';
   playerId?: string;
   playerName?: string;
   playerNumber?: number;
@@ -405,6 +406,14 @@ const removeEliminatedPlayers = (state: GameState) => {
     if (state.currentPlayer?.id === player.id) {
       state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
     }
+  });
+
+  state.activityEvents.unshift({
+    id: `${Date.now()}_${Math.random()}`,
+    timestamp: Date.now(),
+    type: 'elimination',
+    message: `${eliminatedPlayers.length ? `${eliminatedPlayers.length} player(s) eliminated` : 'No players were eliminated'}`,
+    details: {}
   });
 };
 
@@ -718,7 +727,7 @@ const gameSlice = createSlice({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
           type: 'phase_change',
-          message: `Phase changed to ${getPhaseDisplayName(nextPhase)}`,
+          message: `Entering [${getPhaseDisplayName(nextPhase)}]`,
           details: {}
         });
 
@@ -737,6 +746,7 @@ const gameSlice = createSlice({
               id: `${Date.now()}_${Math.random()}`,
               timestamp: Date.now(),
               type: 'phase_effect',
+              subtype: 'ap_renewal',
               message: `+${apIncrement} AP to all players`,
               details: {}
             });
@@ -774,6 +784,7 @@ const gameSlice = createSlice({
                       id: `${Date.now()}_${Math.random()}`,
                       timestamp: Date.now(),
                       type: 'item_usage',
+                      subtype: 'terrain_effect',
                       message: `${player.name || 'Unknown'} ${statusMessage}`,
                       details: {}
                     });
@@ -792,6 +803,7 @@ const gameSlice = createSlice({
                       id: `${Date.now()}_${Math.random()}`,
                       timestamp: Date.now(),
                       type: 'item_usage',
+                      subtype: 'terrain_effect',
                       message: `${player.name || 'Unknown'} ${statusMessage}`,
                       details: {}
                     });

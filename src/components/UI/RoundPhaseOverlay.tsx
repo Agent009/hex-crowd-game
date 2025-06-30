@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { dismissPhaseOverlay, GamePhase, phaseOrder, phaseDurations, phaseOverlayDurations, dismissiblePhases } from '../../store/gameSlice';
+import { dismissPhaseOverlay, GamePhase, phaseOrder, phaseDurations, phaseOverlayDurations, dismissiblePhases, ActivityEvent } from '../../store/gameSlice';
 import {
   Clock,
   Zap,
@@ -14,7 +14,11 @@ import {
   X,
   CheckCircle,
   Timer,
-  Coins
+  Coins,
+  MapPin,
+  Package,
+  Hammer,
+  Heart
 } from 'lucide-react';
 
 interface PhaseData {
@@ -86,7 +90,8 @@ export const RoundPhaseOverlay: React.FC = () => {
     currentPhase,
     phaseStartTime,
     phaseTimer,
-    showPhaseOverlay
+    showPhaseOverlay,
+    activityEvents
   } = useSelector((state: RootState) => state.game);
 
   const [isVisible, setIsVisible] = useState(true);
@@ -96,6 +101,35 @@ export const RoundPhaseOverlay: React.FC = () => {
   const canDismiss = dismissiblePhases.includes(currentPhase);
   const overlayDuration = phaseOverlayDurations[currentPhase];
   const phaseDuration = phaseDurations[currentPhase];
+
+  // Filter events related to the current phase
+  const getPhaseRelatedEvents = (): ActivityEvent[] => {
+    const phaseStartTimestamp = phaseStartTime;
+    const currentTime = Date.now();
+
+    // Get events that occurred after the phase started
+    const recentEvents = activityEvents.filter(event =>
+      event.timestamp >= phaseStartTimestamp && event.timestamp <= currentTime
+    );
+
+    // Filter events based on phase type
+    switch (currentPhase) {
+      case 'ap_renewal':
+        return recentEvents.filter(event =>
+          event.type === 'phase_effect' && event.subtype === 'ap_renewal'
+        );
+      case 'terrain_effects':
+        return recentEvents.filter(event =>
+          event.type === 'terrain_effect' || event.subtype === 'terrain_effect'
+        );
+      case 'disaster_check':
+        return recentEvents.filter(event => event.type === 'disaster');
+      case 'elimination':
+        return recentEvents.filter(event => event.type === 'elimination');
+      default:
+        return recentEvents.slice(0, 5); // Show recent events for other phases
+    }
+  };
 
   useEffect(() => {
     if (showPhaseOverlay) {
@@ -148,6 +182,20 @@ export const RoundPhaseOverlay: React.FC = () => {
   }, [canDismiss]);
 
   if (!showPhaseOverlay || !isVisible) return null;
+
+  const getEventIcon = (type: ActivityEvent['type']) => {
+    switch (type) {
+      case 'phase_effect': return Zap;
+      case 'terrain_effect': return AlertTriangle;
+      case 'disaster': return AlertTriangle;
+      case 'elimination': return Skull;
+      case 'movement': return MapPin;
+      case 'harvesting': return Package;
+      case 'crafting': return Hammer;
+      case 'damage': return Heart;
+      default: return Clock;
+    }
+  };
 
   const phaseProgress = Math.max(0, ((phaseDuration - phaseTimer) / phaseDuration) * 100);
 
@@ -230,6 +278,8 @@ export const RoundPhaseOverlay: React.FC = () => {
     }
   };
 
+  const phaseEvents = getPhaseRelatedEvents();
+
   const Icon = phaseData.icon;
 
   return (
@@ -273,9 +323,39 @@ export const RoundPhaseOverlay: React.FC = () => {
         </div>
 
         {/* Phase-specific Information */}
-        <div className="mb-6">
+        <div className="mb-4">
           {getPhaseSpecificInfo()}
         </div>
+
+        {/* Phase Events */}
+        {phaseEvents.length > 0 && (
+          <div className="mb-6">
+            <div className="text-center text-sm text-gray-300 mb-3">Phase Events</div>
+            <div className="bg-black bg-opacity-30 rounded-lg p-3 max-h-32 overflow-y-auto">
+              <div className="space-y-2">
+                {phaseEvents.slice(0, 8).map(event => {
+                  const EventIcon = getEventIcon(event.type);
+                  return (
+                    <div key={event.id} className="flex items-start space-x-2 text-xs">
+                      <EventIcon className="w-3 h-3 mt-0.5 text-gray-300 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white">{event.message}</div>
+                        {event.playerName && (
+                          <div className="text-gray-400">Player: {event.playerName}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {phaseEvents.length === 0 && (
+                <div className="text-center text-gray-400 text-xs py-2">
+                  No events yet this phase
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Phase Progress Indicator */}
         <div className="mb-6">
