@@ -1,4 +1,5 @@
 import { TerrainType } from './gameData';
+import {isCraftable} from "../utils/utils.ts";
 
 // Resource definitions
 export interface ResourceData {
@@ -339,7 +340,7 @@ export class HarvestGrid {
 
   public craftItem(itemId: string, playerResources: { [resourceId: string]: number }): ItemData | null {
     const itemTemplate = itemDatabase.find(item => item.id === itemId);
-    if (!itemTemplate) {
+    if (!itemTemplate || !isCraftable(itemTemplate)) {
       return null;
     }
 
@@ -404,7 +405,7 @@ export function getItemById(id: string): ItemData | undefined {
 
 export function canCraftItem(itemId: string, playerResources: { [resourceId: string]: number }): boolean {
   const item = getItemById(itemId);
-  if (!item) return false;
+  if (!item || !isCraftable(item)) return false;
 
   return Object.entries(item.craftingRequirements).every(([resourceId, required]) => 
     (playerResources[resourceId] || 0) >= required

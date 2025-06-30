@@ -1,6 +1,7 @@
 import { Coins } from "lucide-react";
 import {ResourceAmount, resourceData} from "../data/gameData";
 import { BuildingData } from "../data/buildingsData";
+import {ItemData} from "../data/harvestData.ts";
 
 export function getResourceIcon(resourceType: string) {
   return resourceData[resourceType as keyof typeof resourceData]?.icon || Coins;
@@ -26,3 +27,7 @@ export function formatTime(seconds: number): string {
 }
 
 export type ExtractId<T> = T extends { id: infer U } ? U : never;
+
+export const isCraftable = (item: ItemData): boolean => {
+  return item.craftingRequirements && Object.keys(item.craftingRequirements).length > 0;
+};

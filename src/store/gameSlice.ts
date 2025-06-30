@@ -54,6 +54,7 @@ export interface PlayerStats {
 
 import { ItemData } from '../data/harvestData';
 import { terrainData, disasterData } from '../data/gameData';
+import {isCraftable} from "../utils/utils.ts";
 
 const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
   const tiles: { [key: string]: HexTile } = {};
@@ -556,7 +557,7 @@ const gameSlice = createSlice({
 
       // Find the item template
       const itemTemplate = itemDatabase.find(item => item.id === itemId);
-      if (!itemTemplate) return;
+      if (!itemTemplate || !isCraftable(itemTemplate)) return;
 
       // Check if player has required resources
       for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
