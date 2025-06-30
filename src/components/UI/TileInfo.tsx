@@ -8,7 +8,7 @@ import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle } from 'lucide-
 
 export const TileInfo: React.FC = () => {
   const dispatch = useDispatch();
-  const { selectedTile, tiles, players, currentPlayer, playerStats, activeTiles } = useSelector((state: RootState) => state.game);
+  const { selectedTile, tiles, players, currentPlayer, playerStats, activeTiles, currentPhase } = useSelector((state: RootState) => state.game);
 
   if (!selectedTile) {
     return (
@@ -47,6 +47,9 @@ export const TileInfo: React.FC = () => {
   const canMoveToTile = () => {
     if (!currentPlayer) return false;
 
+    // Only allow movement during interaction phase
+    if (currentPhase !== 'interaction') return false;
+
     // Check if player has enough AP for movement
     if (!currentPlayerStats) return false;
 
@@ -80,6 +83,12 @@ export const TileInfo: React.FC = () => {
   const handleHarvest = (isItem: boolean = false) => {
     if (!currentPlayer || !currentPlayerStats) {
       console.log('No current player for harvesting');
+      return;
+    }
+
+    // Only allow harvesting during interaction phase
+    if (currentPhase !== 'interaction') {
+      alert('You can only harvest during the Interaction Phase!');
       return;
     }
 
@@ -308,6 +317,10 @@ export const TileInfo: React.FC = () => {
         {!currentPlayer ? (
           <div className="mt-2 text-xs text-yellow-400">
             No current player
+          </div>
+        ) : currentPhase !== 'interaction' ? (
+          <div className="mt-2 text-xs text-orange-400">
+            Wait for Interaction Phase to take actions
           </div>
         ) : !canMoveToTile() && !isPlayerOnTile() ? (
           <div className="mt-2 text-xs text-red-400">

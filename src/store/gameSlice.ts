@@ -357,6 +357,11 @@ const gameSlice = createSlice({
 
       if (!player || !playerStats) return;
 
+      // Restrict movement to interaction phase only
+      if (state.currentPhase !== 'interaction') {
+        return; // Cannot move outside of interaction phase
+      }
+
       // Get terrain data for movement requirements
       const targetTileKey = coordsToKey(target);
       const targetTile = state.tiles[targetTileKey];
@@ -634,6 +639,11 @@ const gameSlice = createSlice({
 
       if (!player || !playerStats || !tile) return;
 
+      // Restrict harvesting to interaction phase only
+      if (state.currentPhase !== 'interaction') {
+        return; // Cannot harvest outside of interaction phase
+      }
+
       // Check if player is on the tile
       const isPlayerOnTile = tile.players?.some(p => p.id === playerId);
       if (!isPlayerOnTile) return;
@@ -732,6 +742,11 @@ const gameSlice = createSlice({
       const playerStats = state.playerStats[playerId];
 
       if (!playerStats) return;
+
+      // Restrict crafting to interaction phase only
+      if (state.currentPhase !== 'interaction') {
+        return; // Cannot craft outside of interaction phase
+      }
 
       // Find the item template
       const itemTemplate = itemDatabase.find(item => item.id === itemId);

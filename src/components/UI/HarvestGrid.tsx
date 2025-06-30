@@ -29,7 +29,7 @@ type TabType = 'resources' | 'items' | 'crafting';
 
 export const HarvestGrid: React.FC = () => {
   const dispatch = useDispatch();
-  const { currentPlayer, playerStats, selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.game);
+  const { currentPlayer, currentPhase, playerStats, selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.game);
 
   const [harvestGrid] = useState(() => new HarvestGridClass());
   const [activeTab, setActiveTab] = useState<TabType>('resources');
@@ -490,6 +490,7 @@ export const HarvestGrid: React.FC = () => {
               {activeTab === 'resources' && 'Resources: 1 AP • Items: 3 AP'}
               {activeTab === 'items' && 'Items cost 3 AP each'}
               {activeTab === 'crafting' && 'Craft items from resources'}
+              {currentPhase !== 'interaction' && ' • ACTIONS RESTRICTED'}
             </div>
           </div>
 
