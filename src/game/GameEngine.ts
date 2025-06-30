@@ -586,6 +586,22 @@ export class GameScene extends Phaser.Scene {
     this.onTileHover = handlers.onTileHover;
   }
 
+  public getTileScreenPosition(coords: CubeCoords): { x: number, y: number } | null {
+    const key = coordsToKey(coords);
+    const tile = this.tiles.get(key);
+    
+    if (!tile) return null;
+    
+    const worldX = tile.x;
+    const worldY = tile.y;
+    const camera = this.cameras.main;
+    
+    // Convert world position to screen position
+    const screenX = (worldX - camera.scrollX) * camera.zoom;
+    const screenY = (worldY - camera.scrollY) * camera.zoom;
+    
+    return { x: screenX, y: screenY };
+  }
 
   cleanup() {
     // Clean up particle system

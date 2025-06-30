@@ -2,7 +2,7 @@ import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import { movePlayer, harvestFromTile } from '../../store/gameSlice';
-import {coordsToKey, cubeToPixel, DEFAULT_HEX_SIZE} from '../../utils/hexGrid';
+import {coordsToKey, cubeToPixel, DEFAULT_HEX_SIZE, areAdjacent} from '../../utils/hexGrid';
 import { terrainData, resourceData } from '../../data/gameData';
 import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle, X } from 'lucide-react';
 
@@ -47,6 +47,9 @@ export const TileInfo: React.FC = () => {
 
     // Only allow movement during interaction phase
     if (currentPhase !== 'interaction') return false;
+
+    // Check if tile is adjacent to current position
+    if (!areAdjacent(currentPlayer.position, selectedTile)) return false;
 
     // Check if player has enough AP for movement
     if (!currentPlayerStats) return false;
@@ -117,7 +120,7 @@ export const TileInfo: React.FC = () => {
   };
 
   return (
-    <div className={`absolute top-20 left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-30 ${
+    <div className={`absolute top-[8rem] left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-30 ${
       isPartiallyVisible ? 'opacity-75' : ''
     }`}>
       <div className="flex items-center justify-between mb-3">

@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { CubeCoords, HexTile, coordsToKey, generateHexSpiral } from '../utils/hexGrid';
+import { CubeCoords, HexTile, coordsToKey, generateHexSpiral, areAdjacent } from '../utils/hexGrid';
 import { itemDatabase } from '../data/harvestData';
 import {
   gameSize,
@@ -34,7 +34,7 @@ export interface GameState {
 
   // Activity tracking
   activityEvents: ActivityEvent[];
-  
+
   // Round phase system
   currentPhase: GamePhase;
   phaseStartTime: number;
@@ -396,6 +396,11 @@ const gameSlice = createSlice({
       // Restrict movement to interaction phase only
       if (state.currentPhase !== 'interaction') {
         return; // Cannot move outside of interaction phase
+      }
+
+      // Check if target tile is adjacent to current position
+      if (!areAdjacent(player.position, target)) {
+        return; // Can only move to adjacent tiles
       }
 
       // Get terrain data for movement requirements

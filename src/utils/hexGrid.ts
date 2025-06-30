@@ -263,6 +263,10 @@ export const keyToCoords = (key: string): CubeCoords => {
 export const coordsEqual = (a: CubeCoords, b: CubeCoords): boolean => 
   a.q === b.q && a.r === b.r && a.s === b.s;
 
+// Check if two hex coordinates are adjacent (distance of 1)
+export const areAdjacent = (a: CubeCoords, b: CubeCoords): boolean =>
+  cubeDistance(a, b) === 1;
+
 // Scale cube coordinates by a factor
 export const cubeScale = (coords: CubeCoords, factor: number): CubeCoords => ({
   q: coords.q * factor,
