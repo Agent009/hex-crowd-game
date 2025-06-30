@@ -5,6 +5,7 @@ import { updateGameTimer, nextRound, endGame, toggleGrid, togglePlayerNumbers, s
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
+import { NotificationSystem } from './NotificationSystem';
 import {
   Users,
   Trophy,
@@ -113,16 +114,16 @@ export const PartyGameHUD: React.FC = () => {
           {sortedTeams.map((team, index) => (
             <div key={team.id} className="flex items-center space-x-2">
               <div className="flex items-center space-x-1">
-                <Trophy
+                <Trophy 
                   className={`w-4 h-4 ${
                     index === 0 ? 'text-yellow-400' : 
                     index === 1 ? 'text-gray-400' : 
                     'text-amber-600'
-                  }`}
+                  }`} 
                 />
                 <span className="text-white text-sm font-semibold">#{index + 1}</span>
               </div>
-              <div
+              <div 
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: team.color }}
               />
@@ -220,7 +221,7 @@ export const PartyGameHUD: React.FC = () => {
             <div className="flex items-center space-x-2">
               {teams.filter(t => t.playerIds.length > 0).map(team => (
                 <div key={team.id} className="flex items-center space-x-1">
-                  <div
+                  <div 
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: team.color }}
                   />
@@ -262,6 +263,9 @@ export const PartyGameHUD: React.FC = () => {
       {/* Player Status Bar */}
       <PlayerStatusBar />
 
+      {/* Notification System */}
+      <NotificationSystem />
+
       {/* Test Mode Controls */}
       {isTestMode && showTestControls && (
         <div className="bg-orange-900 border-t border-orange-600 p-4">
@@ -277,7 +281,7 @@ export const PartyGameHUD: React.FC = () => {
               ×
             </button>
           </div>
-
+          
           <div>
             <div className="text-orange-300 text-sm mb-2">Select Player to Control:</div>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
@@ -292,7 +296,7 @@ export const PartyGameHUD: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center space-x-1">
-                    <div
+                    <div 
                       className="w-3 h-3 rounded-full"
                       style={{ backgroundColor: '#DC2626' }}
                     >

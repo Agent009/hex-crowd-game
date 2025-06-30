@@ -32,6 +32,9 @@ export interface GameState {
   // Player stats for party game
   playerStats: { [playerId: string]: PlayerStats };
 
+  // Activity tracking
+  activityEvents: ActivityEvent[];
+  
   // Tile states
   activeTiles: string[]; // Tiles that can be harvested from
 
@@ -55,6 +58,26 @@ export interface PlayerStats {
 import { ItemData } from '../data/harvestData';
 import { terrainData, disasterData } from '../data/gameData';
 import {isCraftable} from "../utils/utils.ts";
+
+export interface ActivityEvent {
+  id: string;
+  timestamp: number;
+  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start';
+  playerId?: string;
+  playerName?: string;
+  playerNumber?: number;
+  message: string;
+  details?: {
+    coords?: { q: number; r: number; s: number };
+    terrain?: string;
+    item?: string;
+    resource?: string;
+    damage?: number;
+    healing?: number;
+    disaster?: string;
+    affectedPlayers?: string[];
+  };
+}
 
 const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
   const tiles: { [key: string]: HexTile } = {};
@@ -111,6 +134,8 @@ const initialState: GameState = {
 
   playerStats: {},
   activeTiles: Object.keys(generatePartyGameWorld(gameSize)),
+
+  activityEvents: [],
 
   showGrid: true,
   cameraPosition: { x: 0, y: 0 },
@@ -327,6 +352,22 @@ const gameSlice = createSlice({
           state.tiles[newTileKey].players = [];
         }
         state.tiles[newTileKey].players!.push(player);
+        
+        // Add activity event
+        const terrain = terrainData[state.tiles[newTileKey].terrain];
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'movement',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} moved to tile (${target.q}, ${target.r}, ${target.s}) (${terrain.name})`,
+          details: {
+            coords: target,
+            terrain: terrain.name
+          }
+        });
       }
     },
 
@@ -527,6 +568,37 @@ const gameSlice = createSlice({
         }
         tile.isActive = false;
       }
+      
+      // Add activity event
+      if (isItem && itemId) {
+        const itemTemplate = itemDatabase.find(item => item.id === itemId);
+        if (itemTemplate) {
+          state.activityEvents.unshift({
+            id: `${Date.now()}_${Math.random()}`,
+            timestamp: Date.now(),
+            type: 'harvesting',
+            playerId,
+            playerName: player.name,
+            playerNumber: player.number,
+            message: `${player.name} harvested ${itemTemplate.name}`,
+            details: { item: itemTemplate.name }
+          });
+        }
+      } else if (resourceId) {
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'harvesting',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} harvested ${resourceId}`,
+          details: { resource: resourceId }
+        });
+      }
+      
+      // Keep only last 50 events
+      state.activityEvents = state.activityEvents.slice(0, 50);
     },
 
     // Test mode controls
@@ -581,6 +653,21 @@ const gameSlice = createSlice({
 
       // Add crafted item to player's inventory
       playerStats.items.push(craftedItem);
+      
+      // Add activity event
+      state.activityEvents.unshift({
+        id: `${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        type: 'crafting',
+        playerId,
+        playerName: player?.name || 'Unknown',
+        playerNumber: player?.number || 0,
+        message: `${player?.name || 'Unknown'} crafted ${itemTemplate.name}`,
+        details: { item: itemTemplate.name }
+      });
+      
+      // Keep only last 50 events
+      state.activityEvents = state.activityEvents.slice(0, 50);
     },
     // UI controls
     setCameraPosition: (state, action: PayloadAction<{ x: number; y: number }>) => {
