@@ -1,57 +1,7 @@
 // Game data configuration for party game format
 import { Droplets, Waves, Mountain, Flag, Diamond, Trees } from "lucide-react";
 import { BuildingData, buildingDatabase, BuildingType } from "./buildingsData.ts";
-
-export interface FactionData {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  units: UnitData[];
-  buildings: BuildingType[];
-  heroes: HeroData[];
-}
-
-export interface UnitData {
-  id: string;
-  name: string;
-  tier: number;
-  cost: ResourceAmount;
-  stats: UnitStats;
-  abilities?: string[];
-}
-
-export interface UnitStats {
-  hp: number;
-  attack: number;
-  defense: number;
-  speed: number;
-  damage: [number, number]; // min, max damage
-}
-
-export interface HeroData {
-  id: string;
-  name: string;
-  faction: string;
-  class: string;
-  startingStats: HeroStats;
-  skills: SkillData[];
-}
-
-export interface HeroStats {
-  attack: number;
-  defense: number;
-  spellPower: number;
-  knowledge: number;
-  movement: number;
-}
-
-export interface SkillData {
-  id: string;
-  name: string;
-  description: string;
-  maxLevel: number;
-}
+import { CubeCoords } from "../utils/hexGrid";
 
 // Player data for party game
 export interface Player {
@@ -73,6 +23,19 @@ export interface Team {
   score: number;
 }
 
+export type StatType = "AP" | "HP" | "Score";
+export type EffectType = "Gain" | "Loss";
+export type EffectOccurrenceType = "OneOff" | "PerRound";
+
+export interface StatEffectData {
+  stat: StatType; // The stat to effect
+  type: EffectType; // The type of effect (Gain or Loss)
+  occurrence: EffectOccurrenceType; // The frequency of effect occurrence
+  chance: number; // Chance of effect occurring
+  min: number; // Minimum effect value
+  max: number; // Maximum effect value
+}
+
 // Faction data (simplified for party game)
 export const factions: FactionData[] = [
   {
@@ -86,15 +49,6 @@ export const factions: FactionData[] = [
   }
 ];
 
-export function getFactionBuildings(factionId: string): BuildingData[] {
-  const faction = factions.find(f => f.id === factionId);
-  if (!faction) return [];
-
-  return faction.buildings
-    .map(buildingId => buildingDatabase.find(b => b.id === buildingId))
-    .filter((building): building is BuildingData => building !== undefined);
-}
-
 export type TerrainType = "lake" | "river" | "mountain" | "desert" | "plains" | "forest";
 export interface TerrainTypeData {
   name: string;
@@ -106,6 +60,7 @@ export interface TerrainTypeData {
   alternativeAPCost?: number; // Extra AP cost if no required item
   effects?: {
     hpLossPerRound?: number;
+    hpGainPerRound?: Record<string, StatEffectData>[]; // HP loss per round, keyed by resource type;
     protectionItem?: string; // Item that prevents HP loss
     protectionResource?: string; // Resource that prevents HP loss
     itemChance?: number; // Chance to find items
@@ -177,7 +132,16 @@ export const terrainData: TerrainData = {
     color: '#4DB6AC',
     icon: Diamond,
     effects: {
-      // Sunfire health chance - to be implemented
+      hpGainPerRound: [{
+        "sunfire": {
+          stat: "HP",
+          type: "Gain",
+          occurrence: "PerRound",
+          chance: 25,
+          min: 1,
+          max: 1,
+        }
+      }],
     },
     disasters: ['earthquake', 'sandstorm']
   },
@@ -445,4 +409,62 @@ export const teamColors = [
   '#00BCD4', '#795548', '#607D8B', '#E91E63', '#3F51B5'
 ];
 
-import { CubeCoords } from "../utils/hexGrid";
+export interface FactionData {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  units: UnitData[];
+  buildings: BuildingType[];
+  heroes: HeroData[];
+}
+
+export interface UnitData {
+  id: string;
+  name: string;
+  tier: number;
+  cost: ResourceAmount;
+  stats: UnitStats;
+  abilities?: string[];
+}
+
+export interface UnitStats {
+  hp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  damage: [number, number]; // min, max damage
+}
+
+export interface HeroData {
+  id: string;
+  name: string;
+  faction: string;
+  class: string;
+  startingStats: HeroStats;
+  skills: SkillData[];
+}
+
+export interface HeroStats {
+  attack: number;
+  defense: number;
+  spellPower: number;
+  knowledge: number;
+  movement: number;
+}
+
+export interface SkillData {
+  id: string;
+  name: string;
+  description: string;
+  maxLevel: number;
+}
+
+export function getFactionBuildings(factionId: string): BuildingData[] {
+  const faction = factions.find(f => f.id === factionId);
+  if (!faction) return [];
+
+  return faction.buildings
+    .map(buildingId => buildingDatabase.find(b => b.id === buildingId))
+    .filter((building): building is BuildingData => building !== undefined);
+}

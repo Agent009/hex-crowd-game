@@ -200,6 +200,40 @@ const initialState: GameState = {
   showPlayerNumbers: true
 };
 
+/**
+ * Consumes one use of an item if the player has it, and adds a status effect
+ * @param playerStats The player's stats object
+ * @param itemId The ID of the item to consume
+ * @param statusMessage The message to add to status effects
+ * @returns True if the item was found and consumed, false otherwise
+ */
+const consumeItemUse = (
+  playerStats: PlayerStats,
+  itemId: string,
+  statusMessage?: string
+): boolean => {
+  const itemIndex = playerStats.items.findIndex(item => item.id === itemId);
+
+  if (itemIndex !== -1 && playerStats.items[itemIndex].availableUses > 0) {
+    // Consume one use of the item
+    playerStats.items[itemIndex].availableUses -= 1;
+
+    // Add status effect
+    if (statusMessage) {
+      playerStats.statusEffects.push(statusMessage);
+    }
+
+    // Remove item if no uses left
+    if (playerStats.items[itemIndex].availableUses <= 0) {
+      playerStats.items.splice(itemIndex, 1);
+    }
+
+    return true;
+  }
+
+  return false;
+};
+
 const gameSlice = createSlice({
   name: 'game',
   initialState,
@@ -373,21 +407,10 @@ const gameSlice = createSlice({
 
       // Check if terrain requires a specific item
       if (terrain.requiredItem) {
-        const requiredItemIndex = playerStats.items.findIndex(item => item.id === terrain.requiredItem);
-
-        if (requiredItemIndex !== -1) {
-          // Player has the required item - use it
-          const item = playerStats.items[requiredItemIndex];
-          item.minUses -= 1;
-          item.maxUses -= 1;
+        if (consumeItemUse(playerStats, terrain.requiredItem, `Used ${terrain.requiredItem}`)) {
           itemUsed = true;
-
-          // Remove item if no uses left
-          if (item.minUses <= 0) {
-            playerStats.items.splice(requiredItemIndex, 1);
-          }
         } else {
-          // Player doesn't have required item - pay extra AP
+          // Player doesn't have the required item - pay extra AP
           movementCost = terrain.alternativeAPCost || (terrain.moveCost + 1);
         }
       }
@@ -511,14 +534,12 @@ const gameSlice = createSlice({
         const effects = terrain.effects;
 
         if (effects?.hpLossPerRound) {
-          let takeDamage = true;
+          let takeDamage = effects.hpLossPerRound;
 
           // Check for protection item
           if (effects.protectionItem) {
-            const protectionItemIndex = playerStats.items.findIndex(item => item.id === effects.protectionItem);
-            if (protectionItemIndex !== -1) {
-              takeDamage = false;
-              // Don't consume protection items automatically - they provide ongoing protection
+            if (consumeItemUse(playerStats, effects.protectionItem, `Consumed ${effects.protectionItem}`)) {
+              takeDamage -= 1;
             }
           }
 
@@ -527,14 +548,14 @@ const gameSlice = createSlice({
             const resourceAmount = playerStats.resources[effects.protectionResource] || 0;
             if (resourceAmount > 0) {
               playerStats.resources[effects.protectionResource] -= 1;
-              takeDamage = false;
+              takeDamage = 0;
               playerStats.statusEffects.push(`Consumed ${effects.protectionResource}`);
             }
           }
 
           if (takeDamage) {
-            playerStats.hp = Math.max(0, playerStats.hp + effects.hpLossPerRound);
-            playerStats.statusEffects.push(`Lost ${Math.abs(effects.hpLossPerRound)} HP from ${terrain.name}`);
+            playerStats.hp = Math.max(0, playerStats.hp + takeDamage);
+            playerStats.statusEffects.push(`Lost ${Math.abs(takeDamage)} HP from ${terrain.name}`);
           }
         }
       });
@@ -740,8 +761,9 @@ const gameSlice = createSlice({
     }>) => {
       const { playerId, itemId } = action.payload;
       const playerStats = state.playerStats[playerId];
+      const player = state.players.find(p => p.id === playerId);
 
-      if (!playerStats) return;
+      if (!player || !playerStats) return;
 
       // Restrict crafting to interaction phase only
       if (state.currentPhase !== 'interaction') {

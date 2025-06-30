@@ -127,7 +127,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
       if (stats.items.length !== lastStats.items.length) {
         const newItems = stats.items.filter(item => 
           !lastStats.items.some((lastItem: any) => 
-            lastItem.id === item.id && lastItem.minUses === item.minUses
+            lastItem.id === item.id && lastItem.availableUses === item.availableUses
           )
         );
         

@@ -16,6 +16,7 @@ export interface ItemData {
   name: string;
   minUses: number;
   maxUses: number;
+  availableUses: number;
   quantity: number; // Total available in game
   craftingRequirements: { [resourceId: string]: number };
   effects: string[];
@@ -123,6 +124,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Boat',
     minUses: 5,
     maxUses: 7,
+    availableUses: 5,
     quantity: 5,
     craftingRequirements: { cloth: 2, wood: 2 },
     effects: ['Required for travelling on rivers and lakes', 'If it breaks due to storm, player dies']
@@ -132,6 +134,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Camping Gear',
     minUses: 1,
     maxUses: 3,
+    availableUses: 1,
     quantity: 10,
     craftingRequirements: { cloth: 1, wood: 1 },
     effects: ['Removes damage from being on forest tiles']
@@ -141,6 +144,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Climbing Gear',
     minUses: 1,
     maxUses: 5,
+    availableUses: 1,
     quantity: 5,
     craftingRequirements: { cloth: 2, water: 1, stone: 1 },
     effects: ['Required for travelling on mountains', 'If no uses left, player cannot leave the mountain']
@@ -150,6 +154,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Cloak',
     minUses: 1,
     maxUses: 5,
+    availableUses: 1,
     quantity: 10,
     craftingRequirements: { cloth: 2 },
     effects: ['Reduces damage from sandstorms']
@@ -159,6 +164,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Survival Kit',
     minUses: 1,
     maxUses: 3,
+    availableUses: 1,
     quantity: 10,
     craftingRequirements: { cloth: 1, water: 1 },
     effects: ['Reduces damage from wildfire']
@@ -168,6 +174,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Terraform',
     minUses: 1,
     maxUses: 1,
+    availableUses: 1,
     quantity: 5,
     craftingRequirements: {},
     effects: ['Can make three tiles active']
@@ -177,6 +184,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Leech',
     minUses: 1,
     maxUses: 1,
+    availableUses: 1,
     quantity: 5,
     craftingRequirements: {},
     effects: ['Can make two tiles inactive']
@@ -186,6 +194,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Armageddon',
     minUses: 1,
     maxUses: 1,
+    availableUses: 1,
     quantity: 3,
     craftingRequirements: {},
     effects: ['Everyone gets 2 damage']
@@ -195,6 +204,7 @@ export const itemDatabase: ItemData[] = [
     name: 'Rejuvenate',
     minUses: 1,
     maxUses: 1,
+    availableUses: 1,
     quantity: 5,
     craftingRequirements: {},
     effects: ['Get +3 HP']
@@ -286,8 +296,7 @@ export class HarvestGrid {
           const uses = Math.floor(Math.random() * (item.maxUses - item.minUses + 1)) + item.minUses;
           slot.items.push({
             ...item,
-            minUses: uses,
-            maxUses: uses
+            availableUses: uses
           });
         }
       }
@@ -330,8 +339,7 @@ export class HarvestGrid {
 
       return {
         ...itemTemplate,
-        minUses: uses,
-        maxUses: uses
+        availableUses: uses
       };
     }
     
@@ -356,8 +364,7 @@ export class HarvestGrid {
     
     return {
       ...itemTemplate,
-      minUses: uses,
-      maxUses: uses
+      availableUses: uses
     };
   }
 
@@ -392,7 +399,7 @@ export function calculateItemValue(item: ItemData): number {
   // Item value is based on remaining uses
   // Base value could be sum of crafting requirements + bonus for uses
   const baseValue = Object.values(item.craftingRequirements).reduce((sum, cost) => sum + cost, 0);
-  return baseValue + item.minUses; // Simplified calculation
+  return baseValue + item.availableUses; // Simplified calculation
 }
 
 export function getResourceById(id: string): ResourceData | undefined {

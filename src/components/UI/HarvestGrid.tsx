@@ -315,7 +315,7 @@ export const HarvestGrid: React.FC = () => {
                       {!isEnabled && <Lock className="w-3 h-3 text-slate-500" />}
                     </div>
                     <div className="text-slate-400 text-xs">
-                      {item.minUses}-{item.maxUses} uses
+                      {item.availableUses} uses
                     </div>
                   </div>
                 </div>
@@ -376,7 +376,7 @@ export const HarvestGrid: React.FC = () => {
                   <div>
                     <div className="text-white text-sm font-semibold">{item.name}</div>
                     <div className="text-slate-400 text-xs">
-                      {item.minUses}-{item.maxUses} uses
+                      {item.availableUses} uses
                     </div>
                   </div>
                 </div>
@@ -558,7 +558,7 @@ export const HarvestGrid: React.FC = () => {
                         <span className="text-white">{item.name}</span>
                       </div>
                       <div className="text-slate-400">
-                        {item.minUses} uses • {calculateItemValue(item)} coins
+                        {item.availableUses} uses • {calculateItemValue(item)} coins
                       </div>
                     </div>
                   ))}
