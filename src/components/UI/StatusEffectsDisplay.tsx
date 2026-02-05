@@ -7,8 +7,7 @@ import {
   Package,
   Droplets,
   AlertTriangle,
-  X,
-  Skull
+  X
 } from 'lucide-react';
 
 interface StatusEffect {
@@ -52,6 +51,7 @@ export const StatusEffectsDisplay: React.FC = () => {
     }
 
     setLastEffectsCheck(currentEffects);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlayerStats?.statusEffects, lastEffectsCheck]);
 
   const getEffectType = (effect: string): StatusEffect['type'] => {

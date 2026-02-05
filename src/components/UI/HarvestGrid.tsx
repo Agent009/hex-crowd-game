@@ -5,7 +5,6 @@ import { harvestFromTile, craftItem } from '../../store/gameSlice';
 import {
   HarvestGrid as HarvestGridClass,
   ResourceData,
-  ItemData,
   resourceDatabase,
   itemDatabase,
   calculateItemValue,

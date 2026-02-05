@@ -1,17 +1,17 @@
 import React from 'react';
 import {useSelector, useDispatch} from 'react-redux';
 import {RootState} from '../../store/store';
-import {movePlayer, selectTile, toggleTileInfo} from '../../store/gameSlice';
+import {movePlayer, toggleTileInfo} from '../../store/gameSlice';
 import {cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey, areAdjacent} from '../../utils/hexGrid';
 import {terrainData} from '../../data/gameData';
 import {
-  MapPin,
   Package,
   Hammer,
   Info,
   Move,
   Sparkles
 } from 'lucide-react';
+import {GameScene} from "../../game/GameEngine.ts";
 
 interface HexActionMenuProps {
   onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting') => void;
@@ -19,8 +19,7 @@ interface HexActionMenuProps {
 }
 
 export const HexActionMenu: React.FC<HexActionMenuProps> = ({
-                                                              onOpenHarvestGrid,
-                                                              onOpenTileInfo
+                                                              onOpenHarvestGrid
                                                             }) => {
   const dispatch = useDispatch();
   const {
@@ -79,7 +78,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
         target: selectedTile
       }));
       // Clear selection after successful move
-      dispatch(selectTile(null));
+      // dispatch(selectTile(null));
     }
   };
 
@@ -90,7 +89,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       actionFn();
       // Clear selection after action unless we want to keep menu active
       if (!keepMenuActive) {
-        dispatch(selectTile(null));
+        // dispatch(selectTile(null));
       }
     };
   };
@@ -155,9 +154,10 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     const containerRect = gameContainer.getBoundingClientRect();
 
     // Try to get the tile position directly from the Phaser game
-    const phaserGame = (window as any).phaserGame;
-    if (phaserGame?.scene?.scenes?.[0]?.getTileScreenPosition) {
-      const gameScene = phaserGame.scene.scenes[0];
+    const phaserGame = (window as { phaserGame?: Phaser.Game }).phaserGame;
+    const gameScene = phaserGame?.scene?.getScene('GameScene') as GameScene | undefined;
+
+    if (gameScene?.getTileScreenPosition) {
       const tilePos = gameScene.getTileScreenPosition(selectedTile);
 
       if (tilePos) {

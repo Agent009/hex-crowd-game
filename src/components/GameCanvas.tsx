@@ -4,7 +4,9 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store/store';
 import { selectTile } from '../store/gameSlice';
 import { GameScene } from '../game/GameEngine';
-import { CubeCoords, coordsToKey, coordsEqual } from '../utils/hexGrid';
+import { CubeCoords } from '../utils/hexGrid';
+import { disasterData } from '../data/gameData';
+import { TerrainType } from '../data/gameData';
 
 interface GameCanvasProps {
   className?: string;
@@ -13,25 +15,20 @@ interface GameCanvasProps {
 export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<GameScene | null>(null);
-  const lastResourceCollectionRef = useRef<{ [key: string]: boolean }>({});
-  const lastExplorationRef = useRef<{ [key: string]: boolean }>({});
-  const lastBuildingCompletionRef = useRef<{ [key: string]: number }>({});
   const dispatch = useDispatch();
 
-  const { tiles, selectedTile, showPlayerNumbers } = useSelector((state: RootState) => state.game);
+  const { tiles, showPlayerNumbers, activityEvents } = useSelector((state: RootState) => state.game);
+  const lastDisasterEventIdRef = useRef<string | null>(null);
 
   // Memoized event handlers to prevent recreation on every render
   const handleTileClick = useCallback((coords: CubeCoords) => {
-    const key = coordsToKey(coords);
-    const tile = tiles[key];
-
     // Select the tile for party game
     dispatch(selectTile(coords));
-  }, [dispatch, tiles]);
+  }, [dispatch]);
 
-  const handleTileHover = useCallback((coords: CubeCoords | null) => {
-    // Handle hover for party game
-  }, [tiles]);
+  const handleTileHover = useCallback(() => {
+    // Handle hover for party game (currently unused)
+  }, []);
 
   // Initialize Phaser game
   useEffect(() => {
@@ -121,7 +118,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
         sceneRef.current = null;
       }
     };
-  }, []); // Empty dependency array - only run once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run once on mount
 
   // Update tiles when Redux state changes
   useEffect(() => {
@@ -146,6 +144,50 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
       });
     }
   }, [handleTileClick, handleTileHover]);
+
+  // Trigger disaster animations when disaster events occur
+  useEffect(() => {
+    if (!sceneRef.current || !sceneRef.current.scene.isActive()) return;
+
+    // Find new disaster events
+    const disasterEvents = activityEvents.filter(
+      (event) =>
+        event.type === 'disaster' &&
+        event.id !== lastDisasterEventIdRef.current &&
+        event.details &&
+        'disaster' in event.details &&
+        'terrain' in event.details
+    );
+
+    disasterEvents.forEach((event) => {
+      if (!event.details || typeof event.details !== 'object') return;
+
+      const disasterName = (event.details as { disaster?: string }).disaster;
+      const terrain = (event.details as { terrain?: string }).terrain;
+
+      if (!disasterName || !terrain) return;
+
+      // Find disaster ID from name
+      const disasterEntry = Object.entries(disasterData).find(
+        ([, data]) => data.name === disasterName
+      );
+
+      if (!disasterEntry) return;
+
+      const [disasterId] = disasterEntry;
+
+      // Get all tiles affected by this disaster (same terrain)
+      const affectedTiles: CubeCoords[] = Object.values(tiles)
+        .filter((tile) => tile.terrain === (terrain as TerrainType))
+        .map((tile) => tile.coords);
+
+      if (affectedTiles.length > 0) {
+        // Trigger animation
+        sceneRef.current?.triggerDisasterAnimation(disasterId, affectedTiles);
+        lastDisasterEventIdRef.current = event.id;
+      }
+    });
+  }, [activityEvents, tiles]);
   
   return (
     <div 

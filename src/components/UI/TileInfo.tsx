@@ -1,19 +1,15 @@
 import React from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
-import { movePlayer, harvestFromTile } from '../../store/gameSlice';
-import {coordsToKey, cubeToPixel, DEFAULT_HEX_SIZE, areAdjacent} from '../../utils/hexGrid';
-import { terrainData, resourceData } from '../../data/gameData';
-import { MapPin, Eye, Building, Users, Package, Zap, AlertCircle, X } from 'lucide-react';
+import {coordsToKey, cubeToPixel, DEFAULT_HEX_SIZE} from '../../utils/hexGrid';
+import { terrainData } from '../../data/gameData';
+import { MapPin, Users, Zap, AlertCircle } from 'lucide-react';
 
 export const TileInfo: React.FC = () => {
-  const dispatch = useDispatch();
-  const { selectedTile, tiles, players, currentPlayer, playerStats, activeTiles, currentPhase, showTileInfo } = useSelector((state: RootState) => state.game);
+  const { selectedTile, tiles, currentPlayer, playerStats, activeTiles, currentPhase, showTileInfo } = useSelector((state: RootState) => state.game);
 
   if (!selectedTile || !showTileInfo) {
-    return (
-      null
-    );
+    return null;
   }
 
   const key = coordsToKey(selectedTile);
@@ -29,8 +25,6 @@ export const TileInfo: React.FC = () => {
 
   const { x, y } = cubeToPixel(tile.coords, DEFAULT_HEX_SIZE);
   const terrain = terrainData[tile.terrain];
-  const resource = tile.resource ? resourceData[tile.resource] : null;
-  const ResourceIcon = resource?.icon ?? null;
   const isPartiallyVisible = false; // No fog of war in party game
   const isActive = activeTiles.includes(key);
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
@@ -39,84 +33,6 @@ export const TileInfo: React.FC = () => {
   const isPlayerOnTile = () => {
     if (!currentPlayer || !selectedTile) return false;
     return tile && tile.players?.some(p => p.id === currentPlayer.id);
-  };
-
-  // Check if player can move to this tile (simplified for party game)
-  const canMoveToTile = () => {
-    if (!currentPlayer) return false;
-
-    // Only allow movement during interaction phase
-    if (currentPhase !== 'interaction') return false;
-
-    // Check if tile is adjacent to current position
-    if (!areAdjacent(currentPlayer.position, selectedTile)) return false;
-
-    // Check if player has enough AP for movement
-    if (!currentPlayerStats) return false;
-
-    let movementCost = terrain.moveCost || 1;
-
-    // Check if terrain requires a specific item
-    if (terrain.requiredItem) {
-      const hasRequiredItem = currentPlayerStats.items.some(item => item.id === terrain.requiredItem);
-      if (!hasRequiredItem) {
-        // Player doesn't have required item - pay extra AP
-        movementCost = terrain.alternativeAPCost || (terrain.moveCost + 1);
-      }
-    }
-
-    return currentPlayerStats.actionPoints >= movementCost;
-  };
-
-  const handleMoveHere = () => {
-    if (!currentPlayer) {
-      console.log('No current player for movement');
-      return;
-    }
-
-    console.log('Moving player from', currentPlayer.position, 'to', selectedTile);
-    dispatch(movePlayer({
-      playerId: currentPlayer.id,
-      target: selectedTile
-    }));
-  };
-
-  const handleHarvest = (isItem: boolean = false) => {
-    if (!currentPlayer || !currentPlayerStats) {
-      console.log('No current player for harvesting');
-      return;
-    }
-
-    // Only allow harvesting during interaction phase
-    if (currentPhase !== 'interaction') {
-      alert('You can only harvest during the Interaction Phase!');
-      return;
-    }
-
-    const apCost = isItem ? 3 : 1;
-    if (currentPlayerStats.actionPoints < apCost) {
-      alert(`Not enough Action Points! Need ${apCost} AP.`);
-      return;
-    }
-
-    if (!isActive) {
-      alert('This tile is inactive and cannot be harvested from.');
-      return;
-    }
-
-    if (!isPlayerOnTile()) {
-      alert('You must be on the tile to harvest from it.');
-      return;
-    }
-
-    // Show message that player should use the harvest grid
-    if (isItem) {
-      alert('Use the Harvest Grid to select which item to harvest (3 AP)');
-    } else {
-      alert('Use the Harvest Grid to select which resource to harvest (1 AP)');
-    }
-
-    // The actual harvesting is now done through the HarvestGrid component
   };
 
   return (
@@ -233,45 +149,6 @@ export const TileInfo: React.FC = () => {
             {isActive ? 'Active' : 'Inactive'}
           </span>
         </div>
-
-        {/* Resource */}
-        {resource && ResourceIcon && !tile.resourceDepleted && (
-          <div className="flex items-center justify-between">
-            <span className="text-slate-300">Resource:</span>
-            <div className="flex items-center space-x-1">
-              <ResourceIcon className="w-3 h-3" style={{ color: resource.color }} />
-              <span style={{ color: resource.color }} className="font-semibold">
-                {resource.name}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Depleted Resource */}
-        {resource && ResourceIcon && tile.resourceDepleted && (
-          <div className="flex items-center justify-between">
-            <span className="text-slate-300">Resource:</span>
-            <div className="flex items-center space-x-1">
-              <ResourceIcon className="w-3 h-3 text-slate-500" />
-              <span className="text-slate-500 font-semibold">
-                {resource.name} (Depleted)
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Building */}
-        {tile.building && (
-          <div className="flex items-center justify-between">
-            <span className="text-slate-300">Building:</span>
-            <div className="flex items-center space-x-1">
-              <Building className="w-3 h-3 text-amber-400" />
-              <span className="text-amber-400 font-semibold capitalize">
-                {tile.building.replace('_', ' ')}
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Players */}
         {tile.players && tile.players.length > 0 && (

@@ -1,6 +1,8 @@
-import Phaser from 'phaser';
-import { CubeCoords, coordsToKey, cubeToPixel } from '../utils/hexGrid';
+import Phaser from "phaser";
+import { CubeCoords, coordsToKey, cubeToPixel } from "../utils/hexGrid";
 import { TerrainType } from "../data/gameData";
+import { TextureKeys } from "./TextureFactory";
+import { ParticleEmitterManager } from "./ParticleEmitterManager";
 
 export interface ParticleConfig {
   x: number;
@@ -16,224 +18,250 @@ export interface ParticleConfig {
 
 export class AtmosphericParticleSystem {
   private scene: Phaser.Scene;
-  private fogParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
-  private ambientParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
-  private transitionEffects: Map<string, Phaser.GameObjects.Particles.ParticleEmitter> = new Map();
+  private particleEmitterManager: ParticleEmitterManager;
+  private fogParticleIds: Set<string> = new Set();
+  private ambientParticleIds: Set<string> = new Set();
+  private transitionEffectIds: Map<string, string> = new Map();
   private hexSize: number;
+  private performanceMode: boolean = false;
 
   constructor(scene: Phaser.Scene, hexSize: number) {
     this.scene = scene;
     this.hexSize = hexSize;
-    this.createParticleTextures();
+    this.particleEmitterManager = new ParticleEmitterManager(scene);
+    // Textures are now managed by TextureFactory, initialized in GameEngine
   }
 
-  private createParticleTextures() {
-    // Create fog texture for fog of war transitions
-    const fogGraphics = this.scene.add.graphics();
-    fogGraphics.fillStyle(0xffffff, 0.05);
-
-    // Draw layered circles to simulate a soft radial blur
-    for (let r = 8; r > 0; r--) {
-      fogGraphics.fillCircle(8, 8, r);
-    }
-
-    fogGraphics.generateTexture('fog-particle', 16, 16);
-    fogGraphics.destroy();
-
-    // Create dust particle texture
-    const dustGraphics = this.scene.add.graphics();
-    dustGraphics.fillStyle(0xd4af37, 0.6);
-    dustGraphics.fillCircle(2, 2, 2);
-    dustGraphics.generateTexture('dust-particle', 4, 4);
-    dustGraphics.setDepth(1302);
-    dustGraphics.destroy();
-
-    // Create leaf particle texture
-    const leafGraphics = this.scene.add.graphics();
-    leafGraphics.fillStyle(0x228b22, 0.7);
-    leafGraphics.fillEllipse(3, 2, 8, 6);
-    leafGraphics.generateTexture('leaf-particle', 8, 6);
-    leafGraphics.setDepth(1302);
-    leafGraphics.destroy();
-
-    // Create sparkle particle texture
-    const sparkleGraphics = this.scene.add.graphics();
-    sparkleGraphics.fillStyle(0xffd700, 1);
-    sparkleGraphics.fillCircle(1, 1, 1);
-    sparkleGraphics.generateTexture('sparkle-particle', 2, 2);
-    sparkleGraphics.setDepth(1302);
-    sparkleGraphics.destroy();
-  }
-
-  public createFogEffect(coords: CubeCoords, intensity: number = 1) {
+  public createFogEffect(
+    coords: CubeCoords,
+    intensity: number = 1
+  ): string | null {
     const pixel = cubeToPixel(coords, this.hexSize);
+    const key = coordsToKey(coords);
 
     // Remove existing fog effect if any
     this.removeFogEffect(coords);
 
-    const emitter = this.scene.add.particles(pixel.x, pixel.y, 'fog-particle', {
-      x: { min: -this.hexSize * 0.3, max: this.hexSize * 0.3, ease: 'Sine.InOut' },
-      y: { min: -this.hexSize * 0.3, max: this.hexSize * 0.3 },
-      scale: { start: 0.6 * intensity, end: 0.8 * intensity, ease: 'Sine.InOut' },
-      alpha: { start: 0.6 * intensity, end: 0 },
-      tint: 0x708090, // Slate gray fog color
-      lifespan: { min: 3000, max: 6000 },
-      frequency: 500 / intensity, // Slower spawn rate
-      quantity: 1,                 // Only one per interval
-      speedX: { min: -5, max: 5 },
-      speedY: { min: -2, max: -1 }, // very slow upward drift
-      accelerationY: -2,            // further enhance the float
-      gravityY: -5,
-      rotate: { min: -5, max: 5 },
-      angle: { min: 0, max: 360 },
+    const emitterId = this.particleEmitterManager.createEmitterWithId(
+      `fog_${key}`,
+      {
+        x: pixel.x,
+        y: pixel.y,
+        texture: TextureKeys.FOG_PARTICLE,
+        config: {
+          x: {
+            min: -this.hexSize * 0.3,
+            max: this.hexSize * 0.3,
+            ease: "Sine.InOut",
+          },
+          y: { min: -this.hexSize * 0.3, max: this.hexSize * 0.3 },
+          scale: {
+            start: 0.6 * intensity,
+            end: 0.8 * intensity,
+            ease: "Sine.InOut",
+          },
+          alpha: { start: 0.6 * intensity, end: 0 },
+          tint: 0x708090, // Slate gray fog color
+          lifespan: { min: 3000, max: 6000 },
+          frequency: 500 / intensity, // Slower spawn rate
+          quantity: 1, // Only one per interval
+          speedX: { min: -5, max: 5 },
+          speedY: { min: -2, max: -1 }, // very slow upward drift
+          accelerationY: -2, // further enhance the float
+          gravityY: -5,
+          rotate: { min: -5, max: 5 },
+          angle: { min: 0, max: 360 },
+          blendMode: "MULTIPLY",
+        },
+      }
+    );
 
-      blendMode: 'MULTIPLY', // Try 'NORMAL' or 'MULTIPLY' if too glowy, or 'ADD'
-    });
-
-    this.fogParticles.push(emitter);
-    return emitter;
+    this.fogParticleIds.add(emitterId);
+    return emitterId;
   }
 
-  public removeFogEffect(coords: CubeCoords) {
+  public removeFogEffect(coords: CubeCoords): void {
     const key = coordsToKey(coords);
-    const existingEffect = this.transitionEffects.get(key);
-    if (existingEffect) {
-      existingEffect.destroy();
-      this.transitionEffects.delete(key);
+    const emitterId = `fog_${key}`;
+    if (this.fogParticleIds.has(emitterId)) {
+      this.particleEmitterManager.destroyEmitter(emitterId);
+      this.fogParticleIds.delete(emitterId);
     }
   }
 
-  public createAmbientEffect(coords: CubeCoords, terrain: TerrainType) {
+  public createAmbientEffect(
+    coords: CubeCoords,
+    terrain: TerrainType
+  ): string | null {
     const pixel = cubeToPixel(coords, this.hexSize);
-    let emitter: Phaser.GameObjects.Particles.ParticleEmitter;
+    const key = coordsToKey(coords);
+    let emitterId: string | null = null;
 
     switch (terrain) {
-      case 'forest':
-        emitter = this.scene.add.particles(pixel.x, pixel.y, 'leaf-particle', {
-          x: { min: -this.hexSize * 0.6, max: this.hexSize * 0.6 },
-          y: { min: -this.hexSize * 0.6, max: this.hexSize * 0.6 },
-          scale: { start: 0.8, end: 0.3 },
-          alpha: { start: 0.7, end: 0 },
-          tint: [0x228b22, 0x32cd32, 0x006400],
-          lifespan: { min: 4000, max: 8000 },
-          frequency: 1000,
-          quantity: 1,
-          speedX: { min: -20, max: 20 },
-          speedY: { min: -10, max: 10 },
-          gravityY: 15,
-          rotate: { min: 0, max: 360 }
-        });
-        // console.log('Created ambient effect for forest terrain', pixel, coords, emitter);
+      case "forest":
+        emitterId = this.particleEmitterManager.createEmitterWithId(
+          `ambient_forest_${key}`,
+          {
+            x: pixel.x,
+            y: pixel.y,
+            texture: TextureKeys.LEAF_PARTICLE,
+            config: {
+              x: { min: -this.hexSize * 0.6, max: this.hexSize * 0.6 },
+              y: { min: -this.hexSize * 0.6, max: this.hexSize * 0.6 },
+              scale: { start: 0.8, end: 0.3 },
+              alpha: { start: 0.7, end: 0 },
+              tint: [0x228b22, 0x32cd32, 0x006400],
+              lifespan: { min: 4000, max: 8000 },
+              frequency: 1000,
+              quantity: 1,
+              speedX: { min: -20, max: 20 },
+              speedY: { min: -10, max: 10 },
+              gravityY: 15,
+              rotate: { min: 0, max: 360 },
+            },
+          }
+        );
         break;
 
-      case 'desert':
-        emitter = this.scene.add.particles(pixel.x, pixel.y, 'dust-particle', {
-          x: { min: -this.hexSize * 0.7, max: this.hexSize * 0.7 },
-          y: { min: -this.hexSize * 0.7, max: this.hexSize * 0.7 },
-          scale: { start: 0.5, end: 0.1 },
-          alpha: { start: 0.4, end: 0 },
-          tint: 0xdaa520,
-          lifespan: { min: 2000, max: 4000 },
-          frequency: 500,
-          quantity: 2,
-          speedX: { min: -30, max: 30 },
-          speedY: { min: -20, max: -5 },
-          gravityY: 5
-        });
+      case "desert":
+        emitterId = this.particleEmitterManager.createEmitterWithId(
+          `ambient_desert_${key}`,
+          {
+            x: pixel.x,
+            y: pixel.y,
+            texture: TextureKeys.DUST_PARTICLE,
+            config: {
+              x: { min: -this.hexSize * 0.7, max: this.hexSize * 0.7 },
+              y: { min: -this.hexSize * 0.7, max: this.hexSize * 0.7 },
+              scale: { start: 0.5, end: 0.1 },
+              alpha: { start: 0.4, end: 0 },
+              tint: 0xdaa520,
+              lifespan: { min: 2000, max: 4000 },
+              frequency: 500,
+              quantity: 2,
+              speedX: { min: -30, max: 30 },
+              speedY: { min: -20, max: -5 },
+              gravityY: 5,
+            },
+          }
+        );
         break;
 
-      case 'mountain':
-        emitter = this.scene.add.particles(pixel.x, pixel.y, 'sparkle-particle', {
-          x: { min: -this.hexSize * 0.5, max: this.hexSize * 0.5 },
-          y: { min: -this.hexSize * 0.5, max: this.hexSize * 0.5 },
-          scale: { start: 1, end: 0 },
-          alpha: { start: 0.8, end: 0 },
-          tint: [0xffd700, 0xc0c0c0, 0xffffff],
-          lifespan: { min: 1000, max: 3000 },
-          frequency: 2000,
-          quantity: 1,
-          speedX: { min: -5, max: 5 },
-          speedY: { min: -10, max: -2 },
-          gravityY: -2
-        });
+      case "mountain":
+        emitterId = this.particleEmitterManager.createEmitterWithId(
+          `ambient_mountain_${key}`,
+          {
+            x: pixel.x,
+            y: pixel.y,
+            texture: TextureKeys.SPARKLE_DOT_PARTICLE,
+            config: {
+              x: { min: -this.hexSize * 0.5, max: this.hexSize * 0.5 },
+              y: { min: -this.hexSize * 0.5, max: this.hexSize * 0.5 },
+              scale: { start: 1, end: 0 },
+              alpha: { start: 0.8, end: 0 },
+              tint: [0xffd700, 0xc0c0c0, 0xffffff],
+              lifespan: { min: 1000, max: 3000 },
+              frequency: 2000,
+              quantity: 1,
+              speedX: { min: -5, max: 5 },
+              speedY: { min: -10, max: -2 },
+              gravityY: -2,
+            },
+          }
+        );
         break;
 
       default:
         return null;
     }
 
-    this.ambientParticles.push(emitter);
-    return emitter;
+    if (emitterId) {
+      this.ambientParticleIds.add(emitterId);
+    }
+    return emitterId;
   }
 
-  public createExplorationTransition(coords: CubeCoords) {
+  public createExplorationTransition(coords: CubeCoords): string {
     const pixel = cubeToPixel(coords, this.hexSize);
     const key = coordsToKey(coords);
 
     // Create simple expanding ring effect (legacy support)
-    const emitter = this.scene.add.particles(pixel.x, pixel.y, 'sparkle-particle', {
-      x: 0,
-      y: 0,
-      scale: { start: 0.3, end: 0.8 },
-      alpha: { start: 1, end: 0 },
-      tint: 0x00ff00,
-      lifespan: 1000,
-      frequency: -1,
-      quantity: 12,
-      speedX: { min: -50, max: 50 },
-      speedY: { min: -50, max: 50 },
-      emitZone: {
-        type: 'edge',
-        source: new Phaser.Geom.Circle(0, 0, this.hexSize * 0.8),
-        quantity: 12
+    const emitterId = this.particleEmitterManager.createEmitterWithId(
+      `transition_${key}`,
+      {
+        x: pixel.x,
+        y: pixel.y,
+        texture: TextureKeys.SPARKLE_DOT_PARTICLE,
+        config: {
+          x: 0,
+          y: 0,
+          scale: { start: 0.3, end: 0.8 },
+          alpha: { start: 1, end: 0 },
+          tint: 0x00ff00,
+          lifespan: 1000,
+          frequency: -1,
+          quantity: 12,
+          speedX: { min: -50, max: 50 },
+          speedY: { min: -50, max: 50 },
+          emitZone: {
+            type: "edge",
+            source: new Phaser.Geom.Circle(0, 0, this.hexSize * 0.8),
+            quantity: 12,
+          },
+        },
+        autoDestroy: true,
+        autoDestroyDelay: 1000,
       }
-    });
+    );
 
-    // Auto-destroy after animation
-    this.scene.time.delayedCall(1000, () => {
-      emitter.destroy();
-      this.transitionEffects.delete(key);
-    });
-
-    this.transitionEffects.set(key, emitter);
-    return emitter;
+    this.transitionEffectIds.set(key, emitterId);
+    return emitterId;
   }
 
-  public createUnitMovementEffect(fromCoords: CubeCoords, toCoords: CubeCoords) {
+  public createUnitMovementEffect(
+    fromCoords: CubeCoords,
+    toCoords: CubeCoords
+  ): string {
     const fromPixel = cubeToPixel(fromCoords, this.hexSize);
     const toPixel = cubeToPixel(toCoords, this.hexSize);
 
     // Create trail effect
-    const emitter = this.scene.add.particles(fromPixel.x, fromPixel.y, 'dust-particle', {
-      x: 0,
-      y: 0,
-      scale: { start: 0.3, end: 0 },
-      alpha: { start: 0.6, end: 0 },
-      tint: 0x87ceeb,
-      lifespan: 800,
-      frequency: 50,
-      quantity: 2,
-      speedX: { min: -10, max: 10 },
-      speedY: { min: -10, max: 10 }
+    const emitterId = this.particleEmitterManager.createEmitter({
+      x: fromPixel.x,
+      y: fromPixel.y,
+      texture: TextureKeys.DUST_PARTICLE,
+      config: {
+        x: 0,
+        y: 0,
+        scale: { start: 0.3, end: 0 },
+        alpha: { start: 0.6, end: 0 },
+        tint: 0x87ceeb,
+        lifespan: 800,
+        frequency: 50,
+        quantity: 2,
+        speedX: { min: -10, max: 10 },
+        speedY: { min: -10, max: 10 },
+      },
+      autoDestroy: true,
+      autoDestroyDelay: 1000,
     });
 
     // Animate emitter position
-    this.scene.tweens.add({
-      targets: emitter,
-      x: toPixel.x,
-      y: toPixel.y,
-      duration: 1000,
-      ease: 'Power2',
-      onComplete: () => {
-        emitter.destroy();
-      }
-    });
+    const emitter = this.particleEmitterManager.getEmitter(emitterId);
+    if (emitter) {
+      this.scene.tweens.add({
+        targets: emitter,
+        x: toPixel.x,
+        y: toPixel.y,
+        duration: 1000,
+        ease: "Power2",
+      });
+    }
 
-    return emitter;
+    return emitterId;
   }
 
-  public updateFogIntensity(coords: CubeCoords, fogLevel: number) {
-    // console.log("updateFogIntensity > coords", coords, "fogLevel", fogLevel);
+  public updateFogIntensity(coords: CubeCoords, fogLevel: number): void {
     if (fogLevel === 0) {
       // Dense fog
       this.createFogEffect(coords, 1.5);
@@ -246,28 +274,27 @@ export class AtmosphericParticleSystem {
     }
   }
 
-  public setZoomLevel(zoom: number) {
-    // Adjust particle scales based on zoom
-    const scaleMultiplier = Math.max(0.5, Math.min(2, zoom));
-    
-    [...this.fogParticles, ...this.ambientParticles].forEach(emitter => {
-      if (emitter && emitter.active) {
-        emitter.setScale(scaleMultiplier);
-      }
-    });
+  public setZoomLevel(zoom: number): void {
+    // Delegate to particle emitter manager
+    this.particleEmitterManager.setZoomLevel(zoom);
   }
 
-  public destroy() {
-    [...this.fogParticles, ...this.ambientParticles].forEach(emitter => {
-      if (emitter) emitter.destroy();
-    });
-    
-    this.transitionEffects.forEach(emitter => {
-      if (emitter) emitter.destroy();
-    });
+  public setPerformanceMode(enabled: boolean): void {
+    this.performanceMode = enabled;
+    this.particleEmitterManager.setPerformanceMode(enabled);
+  }
 
-    this.fogParticles = [];
-    this.ambientParticles = [];
-    this.transitionEffects.clear();
+  public getPerformanceMode(): boolean {
+    return this.performanceMode;
+  }
+
+  public destroy(): void {
+    // Destroy all emitters through manager
+    this.particleEmitterManager.destroyAll();
+
+    // Clear tracking sets
+    this.fogParticleIds.clear();
+    this.ambientParticleIds.clear();
+    this.transitionEffectIds.clear();
   }
 }

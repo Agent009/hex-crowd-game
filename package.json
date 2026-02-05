@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "check-types": "tsc --noEmit --pretty",
+    "lint:check": "eslint .",
+    "lint": "eslint . --fix",
+    "typecheck": "tsc --noEmit --pretty",
+    "check": "npm run typecheck && npm run lint",
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {

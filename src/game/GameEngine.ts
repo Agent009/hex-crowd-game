@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from "phaser";
 import {
   CubeCoords,
   cubeToPixel,
@@ -6,12 +6,15 @@ import {
   HexTile,
   coordsToKey,
   coordsEqual,
-  isIsometricGrid, getHexPoints, DEFAULT_HEX_SIZE
-} from '../utils/hexGrid';
-import {terrainData, TerrainTypeData} from '../data/gameData';
-import { disasterData } from '../data/gameData';
-import { AtmosphericParticleSystem } from './ParticleSystem';
-import { GameAnimationSystem } from './AnimationSystem';
+  isIsometricGrid,
+  getHexPoints,
+  DEFAULT_HEX_SIZE,
+} from "../utils/hexGrid";
+import { terrainData, TerrainTypeData } from "../data/gameData";
+import { disasterData } from "../data/gameData";
+import { AtmosphericParticleSystem } from "./ParticleSystem";
+import { GameAnimationSystem } from "./AnimationSystem";
+import { TextureFactory } from "./TextureFactory";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
@@ -26,14 +29,13 @@ export class GameScene extends Phaser.Scene {
   private onTileHover?: (coords: CubeCoords | null) => void;
   private showPlayerNumbers: boolean = true;
   private isInitialized: boolean = false;
-  private disasterAnimations: Map<string, Phaser.GameObjects.Sprite> = new Map();
 
   constructor() {
-    super({ key: 'GameScene' });
+    super({ key: "GameScene" });
   }
 
   preload() {
-    console.log('GameScene > preload()');
+    console.log("GameScene > preload()");
 
     // Load terrain textures
     // this.load.image('dirt_01', 'src/assets/textures/dirt_01.png');
@@ -52,28 +54,31 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    console.log('GameScene > create()');
+    console.log("GameScene > create()");
 
     // Set up camera
     this.cameras.main.setZoom(1);
     this.cameras.main.centerOn(0, 0);
 
     // Make the game instance globally accessible for coordinate conversion
-    (window as any).phaserGame = this.game;
+    (window as { phaserGame?: Phaser.Game }).phaserGame = this.game;
 
     if (isIsometricGrid) {
       // Adjust camera for better isometric viewing
       this.cameras.main.setRotation(0); // Keep rotation at 0 for true isometric
-      this.cameras.main.setBackgroundColor('#2D5016'); // Darker background for depth
+      this.cameras.main.setBackgroundColor("#2D5016"); // Darker background for depth
     }
 
     // Enable input
-    this.input.on('pointermove', this.handlePointerMove, this);
-    this.input.on('pointerdown', this.handlePointerDown, this);
-    this.input.on('wheel', this.handleWheel, this);
+    this.input.on("pointermove", this.handlePointerMove, this);
+    this.input.on("pointerdown", this.handlePointerDown, this);
+    this.input.on("wheel", this.handleWheel, this);
 
     // Create grid graphics
     this.gridGraphics = this.add.graphics();
+
+    // Initialize all textures first (must be before particle/animation systems)
+    TextureFactory.initialize(this);
 
     // Initialize particle system
     this.particleSystem = new AtmosphericParticleSystem(this, this.hexSize);
@@ -81,53 +86,13 @@ export class GameScene extends Phaser.Scene {
     // Initialize animation system
     this.animationSystem = new GameAnimationSystem(this, this.hexSize);
 
-    // Create disaster textures
-    this.createDisasterTextures();
-
     // Add keyboard controls
     const cursors = this.input.keyboard?.createCursorKeys();
     if (cursors) {
       // Handle camera movement in update loop
     }
 
-    console.log('GameScene setup complete');
-  }
-
-  private createDisasterTextures() {
-    // Create earthquake texture
-    const earthquakeGraphics = this.add.graphics();
-    earthquakeGraphics.fillStyle(0x8B4513, 0.8);
-    earthquakeGraphics.fillRect(0, 0, 32, 32);
-    earthquakeGraphics.generateTexture('earthquake', 32, 32);
-    earthquakeGraphics.destroy();
-
-    // Create sandstorm texture
-    const sandstormGraphics = this.add.graphics();
-    sandstormGraphics.fillStyle(0xDEB887, 0.6);
-    earthquakeGraphics.fillCircle(16, 16, 16);
-    sandstormGraphics.generateTexture('sandstorm', 32, 32);
-    sandstormGraphics.destroy();
-
-    // Create wildfire texture
-    const wildfireGraphics = this.add.graphics();
-    wildfireGraphics.fillStyle(0xFF4500, 0.9);
-    wildfireGraphics.fillRect(0, 0, 32, 32);
-    wildfireGraphics.generateTexture('wildfire', 32, 32);
-    wildfireGraphics.destroy();
-
-    // Create tsunami texture
-    const tsunamiGraphics = this.add.graphics();
-    tsunamiGraphics.fillStyle(0x4682B4, 0.7);
-    tsunamiGraphics.fillRect(0, 0, 32, 32);
-    tsunamiGraphics.generateTexture('tsunami', 32, 32);
-    tsunamiGraphics.destroy();
-
-    // Create storm texture
-    const stormGraphics = this.add.graphics();
-    stormGraphics.fillStyle(0x483D8B, 0.8);
-    stormGraphics.fillRect(0, 0, 32, 32);
-    stormGraphics.generateTexture('storm', 32, 32);
-    stormGraphics.destroy();
+    console.log("GameScene setup complete");
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -137,7 +102,11 @@ export class GameScene extends Phaser.Scene {
     onTileHover: (coords: CubeCoords | null) => void;
     showPlayerNumbers: boolean;
   }) {
-    console.log('GameScene > initializeScene() > initializing scene with data:', Object.keys(data.tiles).length, 'tiles');
+    console.log(
+      "GameScene > initializeScene() > initializing scene with data:",
+      Object.keys(data.tiles).length,
+      "tiles"
+    );
 
     this.gameData = data.tiles;
     this.onTileClick = data.onTileClick;
@@ -150,7 +119,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    console.log('GameScene > update()');
+    console.log("GameScene > update()");
     // Handle camera movement
     const cursors = this.input.keyboard?.createCursorKeys();
     if (cursors) {
@@ -163,17 +132,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderWorld() {
-    console.log('GameScene > renderWorld() > rendering world with', Object.keys(this.gameData).length, 'tiles');
+    console.log(
+      "GameScene > renderWorld() > rendering world with",
+      Object.keys(this.gameData).length,
+      "tiles"
+    );
     this.clearTiles();
 
-    Object.keys(this.gameData).forEach(key => {
+    Object.keys(this.gameData).forEach((key) => {
       const tile = this.gameData[key];
       this.renderTile(tile);
     });
 
     this.renderGrid();
     this.updateAtmosphericEffects();
-    console.log('World rendering complete');
+    console.log("World rendering complete");
   }
 
   private renderTile(tile: HexTile) {
@@ -204,21 +177,36 @@ export class GameScene extends Phaser.Scene {
       const terrain = terrainData[tile.terrain];
       if (terrain.icon) {
         // For now, we'll use text representations of terrain
-        let terrainSymbol = '';
+        let terrainSymbol = "";
         switch (tile.terrain) {
-          case 'lake': terrainSymbol = '🌊'; break;
-          case 'river': terrainSymbol = '💧'; break;
-          case 'mountain': terrainSymbol = '⛰️'; break;
-          case 'desert': terrainSymbol = '🏜️'; break;
-          case 'plains': terrainSymbol = '💎'; break;
-          case 'forest': terrainSymbol = '🌲'; break;
+          case "lake":
+            terrainSymbol = "🌊";
+            break;
+          case "river":
+            terrainSymbol = "💧";
+            break;
+          case "mountain":
+            terrainSymbol = "⛰️";
+            break;
+          case "desert":
+            terrainSymbol = "🏜️";
+            break;
+          case "plains":
+            terrainSymbol = "💎";
+            break;
+          case "forest":
+            terrainSymbol = "🌲";
+            break;
         }
 
         if (terrainSymbol) {
-          this.add.text(pixel.x, pixel.y, terrainSymbol, {
-            fontSize: '16px',
-            align: 'center'
-          }).setOrigin(0.5).setDepth(1000);
+          this.add
+            .text(pixel.x, pixel.y, terrainSymbol, {
+              fontSize: "16px",
+              align: "center",
+            })
+            .setOrigin(0.5)
+            .setDepth(1000);
         }
       }
     }
@@ -231,17 +219,20 @@ export class GameScene extends Phaser.Scene {
         const offsetY = index * 20 - (tile.players!.length - 1) * 10;
 
         // Player number circle
-        const playerText = this.add.text(pixel.x, pixel.y + offsetY, player.number.toString(), {
-          fontSize: '14px',
-          color: '#ffffff',
-          backgroundColor: '#DC2626',
-          padding: { x: 6, y: 4 }
-        }).setOrigin(0.5).setDepth(1010);
+        const playerText = this.add
+          .text(pixel.x, pixel.y + offsetY, player.number.toString(), {
+            fontSize: "14px",
+            color: "#ffffff",
+            backgroundColor: "#DC2626",
+            padding: { x: 6, y: 4 },
+          })
+          .setOrigin(0.5)
+          .setDepth(1010);
 
         // Make it circular
         playerText.setStyle({
           ...playerText.style,
-          borderRadius: '50%'
+          borderRadius: "50%",
         });
 
         this.playerNumbers.set(`${key}_${player.id}`, playerText);
@@ -250,28 +241,50 @@ export class GameScene extends Phaser.Scene {
 
     // Make all tiles interactive in party game
     const hexPoints = getHexPoints(0, 0, this.hexSize);
-    graphics.setInteractive(new Phaser.Geom.Polygon(hexPoints), Phaser.Geom.Polygon.Contains);
-    graphics.on('pointerover', () => {
-      this._redrawTileGraphics(graphics, tile, true, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
+    graphics.setInteractive(
+      new Phaser.Geom.Polygon(hexPoints),
+      Phaser.Geom.Polygon.Contains
+    );
+    graphics.on("pointerover", () => {
+      this._redrawTileGraphics(
+        graphics,
+        tile,
+        true,
+        (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
+          false
+      );
       this.onTileHover?.(tile.coords);
     });
-    graphics.on('pointerout', () => {
-      this._redrawTileGraphics(graphics, tile, false, (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) || false);
+    graphics.on("pointerout", () => {
+      this._redrawTileGraphics(
+        graphics,
+        tile,
+        false,
+        (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
+          false
+      );
       this.onTileHover?.(null);
     });
-    graphics.on('pointerdown', () => {
+    graphics.on("pointerdown", () => {
       this.selectTile(tile.coords);
     });
 
     this.tiles.set(key, graphics);
   }
 
-  private _redrawTileGraphics(graphics: Phaser.GameObjects.Graphics, tile: HexTile, isHovered: boolean, isSelected: boolean) {
+  private _redrawTileGraphics(
+    graphics: Phaser.GameObjects.Graphics,
+    tile: HexTile,
+    isHovered: boolean,
+    isSelected: boolean
+  ) {
     graphics.clear();
 
     const { y } = cubeToPixel(tile.coords, this.hexSize);
     const terrain = terrainData[tile.terrain];
-    const baseColor = Phaser.Display.Color.HexStringToColor(terrain.color).color;
+    const baseColor = Phaser.Display.Color.HexStringToColor(
+      terrain.color
+    ).color;
 
     // Determine stroke style based on state
     let strokeColor = 0x666666;
@@ -279,18 +292,25 @@ export class GameScene extends Phaser.Scene {
     let strokeWidth = 1;
 
     if (isSelected) {
-      strokeColor = 0xFFFF00;
+      strokeColor = 0xffff00;
       strokeAlpha = 1;
       strokeWidth = 3;
     } else if (isHovered) {
-      strokeColor = 0xFFFFFF;
+      strokeColor = 0xffffff;
       strokeAlpha = 0.8;
       strokeWidth = 2;
     }
 
     // Draw the hex tile
     // console.log("Drawing hex tile at", tile.coords, "with terrain", terrain.name, "and depth", y);
-    this.drawHex(graphics, baseColor, terrain, strokeColor, strokeWidth, strokeAlpha);
+    this.drawHex(
+      graphics,
+      baseColor,
+      terrain,
+      strokeColor,
+      strokeWidth,
+      strokeAlpha
+    );
     // Farthest (small y) drawn first, then closer on top
     graphics.setDepth(Math.round(y - 1000));
   }
@@ -305,12 +325,20 @@ export class GameScene extends Phaser.Scene {
   ) {
     if (isIsometricGrid) {
       // Draw true isometric hex with 3D depth
-      return this.drawIsometricHex(graphics, baseColor, strokeColor, strokeWidth, strokeAlpha);
+      return this.drawIsometricHex(
+        graphics,
+        baseColor,
+        strokeColor,
+        strokeWidth,
+        strokeAlpha
+      );
     }
 
     // Draw hex shape
     graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
-    graphics.fillStyle(Phaser.Display.Color.HexStringToColor(terrain.color).color);
+    graphics.fillStyle(
+      Phaser.Display.Color.HexStringToColor(terrain.color).color
+    );
 
     const hexPoints = getHexPoints(0, 0, this.hexSize);
     graphics.beginPath();
@@ -341,12 +369,14 @@ export class GameScene extends Phaser.Scene {
     const leftColor = Phaser.Display.Color.Interpolate.ColorWithColor(
       Phaser.Display.Color.IntegerToColor(baseColor),
       Phaser.Display.Color.IntegerToColor(0x000000),
-      100, 30 // Increase darkness for better contrast
+      100,
+      30 // Increase darkness for better contrast
     ).color;
     const rightColor = Phaser.Display.Color.Interpolate.ColorWithColor(
       Phaser.Display.Color.IntegerToColor(baseColor),
       Phaser.Display.Color.IntegerToColor(0x000000),
-      100, 45 // Increase darkness for better contrast
+      100,
+      45 // Increase darkness for better contrast
     ).color;
 
     // Draw the three visible faces of the isometric hex in correct order for proper overlap
@@ -422,11 +452,13 @@ export class GameScene extends Phaser.Scene {
     this.gridGraphics.lineStyle(1, 0x444444, isIsometricGrid ? 0.2 : 0.3);
 
     // Get an array of [key, tile], sort by depth
-    const sorted = Object.entries(this.gameData).sort(([, tileA], [, tileB]) => {
-      const pa = cubeToPixel(tileA.coords, this.hexSize);
-      const pb = cubeToPixel(tileB.coords, this.hexSize);
-      return (pa.y - pb.y) || (pa.x - pb.x);
-    });
+    const sorted = Object.entries(this.gameData).sort(
+      ([, tileA], [, tileB]) => {
+        const pa = cubeToPixel(tileA.coords, this.hexSize);
+        const pb = cubeToPixel(tileB.coords, this.hexSize);
+        return pa.y - pb.y || pa.x - pb.x;
+      }
+    );
 
     for (const [, tile] of sorted) {
       const pixel = cubeToPixel(tile.coords, this.hexSize);
@@ -474,21 +506,26 @@ export class GameScene extends Phaser.Scene {
 
   private clearTiles() {
     // Destroy all existing tile graphics
-    this.tiles.forEach(tile => tile.destroy());
+    this.tiles.forEach((tile) => tile.destroy());
     this.tiles.clear();
 
     // Destroy all player numbers
-    this.playerNumbers.forEach(text => text.destroy());
+    this.playerNumbers.forEach((text) => text.destroy());
     this.playerNumbers.clear();
 
     // Clear all text objects that might be left over
-    const textObjects = this.children.list.filter(child => child.type === 'Text');
-    textObjects.forEach(obj => obj.destroy());
+    const textObjects = this.children.list.filter(
+      (child) => child.type === "Text"
+    );
+    textObjects.forEach((obj) => obj.destroy());
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
     // Handle camera panning with middle mouse or right mouse
-    if (pointer.isDown && (pointer.middleButtonDown() || pointer.rightButtonDown())) {
+    if (
+      pointer.isDown &&
+      (pointer.middleButtonDown() || pointer.rightButtonDown())
+    ) {
       this.cameras.main.scrollX -= pointer.velocity.x / this.cameras.main.zoom;
       this.cameras.main.scrollY -= pointer.velocity.y / this.cameras.main.zoom;
     }
@@ -510,14 +547,18 @@ export class GameScene extends Phaser.Scene {
 
   private handleWheel(event: WheelEvent) {
     const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Phaser.Math.Clamp(this.cameras.main.zoom * zoomFactor, 0.5, 2);
+    const newZoom = Phaser.Math.Clamp(
+      this.cameras.main.zoom * zoomFactor,
+      0.5,
+      2
+    );
     this.cameras.main.setZoom(newZoom);
     this.particleSystem.setZoomLevel(newZoom);
   }
 
   // Public methods for external control
   public updateTiles(tiles: { [key: string]: HexTile }) {
-    console.log('Updating tiles in scene:', Object.keys(tiles).length);
+    console.log("Updating tiles in scene:", Object.keys(tiles).length);
     this.gameData = tiles;
     if (this.isInitialized) {
       // Force a complete re-render to ensure hero icons are properly updated
@@ -525,8 +566,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  public setFogOfWar(enabled: boolean) {
-    // Not used in party game
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public setFogOfWar(_enabled: boolean): void {
+    // Not used in party game - parameter kept for API compatibility
   }
 
   public setPlayerNumbersVisibility(enabled: boolean) {
@@ -546,35 +588,26 @@ export class GameScene extends Phaser.Scene {
     this.particleSystem.setZoomLevel(zoom);
   }
 
-  // Method to trigger disaster animation
-  public triggerDisasterAnimation(disasterId: string, affectedTiles: CubeCoords[]) {
+  // Method to trigger disaster animation - delegates to AnimationSystem
+  public triggerDisasterAnimation(
+    disasterId: string,
+    affectedTiles: CubeCoords[]
+  ): void {
     const disaster = disasterData[disasterId];
-    if (!disaster) return;
-
-    // Screen shake for earthquakes
-    if (disasterId === 'earthquake') {
-      this.cameras.main.shake(500, 0.02);
+    if (!disaster) {
+      console.warn(`Unknown disaster: ${disasterId}`);
+      return;
     }
 
-    // Create disaster sprites on affected tiles
-    affectedTiles.forEach(coords => {
-      const pixel = cubeToPixel(coords, this.hexSize);
-      const sprite = this.add.sprite(pixel.x, pixel.y, disasterId);
-      sprite.setDepth(1500);
-      sprite.setAlpha(0.8);
-
-      // Animate the disaster effect
-      this.tweens.add({
-        targets: sprite,
-        alpha: { from: 0.8, to: 0 },
-        scale: { from: 1, to: 1.5 },
-        duration: 2000,
-        ease: 'Power2',
-        onComplete: () => {
-          sprite.destroy();
-        }
+    // Delegate to animation system
+    this.animationSystem
+      .createDisasterAnimation({
+        disasterId,
+        affectedTiles,
+      })
+      .catch((error: unknown) => {
+        console.error("Error creating disaster animation:", error);
       });
-    });
   }
 
   // Method to update event handlers from React
@@ -586,20 +619,22 @@ export class GameScene extends Phaser.Scene {
     this.onTileHover = handlers.onTileHover;
   }
 
-  public getTileScreenPosition(coords: CubeCoords): { x: number, y: number } | null {
+  public getTileScreenPosition(
+    coords: CubeCoords
+  ): { x: number; y: number } | null {
     const key = coordsToKey(coords);
     const tile = this.tiles.get(key);
-    
+
     if (!tile) return null;
-    
+
     const worldX = tile.x;
     const worldY = tile.y;
     const camera = this.cameras.main;
-    
+
     // Convert world position to screen position
     const screenX = (worldX - camera.scrollX) * camera.zoom;
     const screenY = (worldY - camera.scrollY) * camera.zoom;
-    
+
     return { x: screenX, y: screenY };
   }
 
@@ -621,9 +656,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Remove event listeners
-    this.input.off('pointermove', this.handlePointerMove, this);
-    this.input.off('pointerdown', this.handlePointerDown, this);
-    this.input.off('wheel', this.handleWheel, this);
+    this.input.off("pointermove", this.handlePointerMove, this);
+    this.input.off("pointerdown", this.handlePointerDown, this);
+    this.input.off("wheel", this.handleWheel, this);
 
     // Reset state
     this.isInitialized = false;

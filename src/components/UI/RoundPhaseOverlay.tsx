@@ -22,7 +22,7 @@ import {
 interface PhaseData {
   name: string;
   description: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string; size?: string | number }>;
   color: string;
   barColor: string;
   bgColor: string;
@@ -196,6 +196,7 @@ export const RoundPhaseOverlay: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canDismiss]);
 
   if (!showPhaseOverlay || !isVisible) return null;

@@ -1,7 +1,9 @@
-import Phaser from 'phaser';
-import { CubeCoords, cubeToPixel, getHexPoints } from '../utils/hexGrid';
-import { resourceData, ResourceType } from '../data/gameData';
+import Phaser from "phaser";
+import { CubeCoords, cubeToPixel, getHexPoints } from "../utils/hexGrid";
+import { resourceData, ResourceType } from "../data/gameData";
 import { BuildingType } from "../data/buildingsData";
+import { TextureFactory, TextureKeys } from "./TextureFactory";
+import { ParticleEmitterManager } from "./ParticleEmitterManager";
 
 export interface AnimationConfig {
   duration?: number;
@@ -28,6 +30,11 @@ export interface FogRevealConfig extends AnimationConfig {
   revealRadius: number;
 }
 
+export interface DisasterAnimationConfig extends AnimationConfig {
+  disasterId: string;
+  affectedTiles: CubeCoords[];
+}
+
 interface PooledGraphics extends Phaser.GameObjects.Graphics {
   isPooled?: boolean;
 }
@@ -42,71 +49,15 @@ export class GameAnimationSystem {
   private graphicsPool: PooledGraphics[] = [];
   private textPool: PooledText[] = [];
   private activeAnimations: Set<Phaser.Tweens.Tween> = new Set();
-  private particleEmitters: Map<string, Phaser.GameObjects.Particles.ParticleEmitter> = new Map();
+  private particleEmitterManager: ParticleEmitterManager;
   private performanceMode: boolean = false;
 
   constructor(scene: Phaser.Scene, hexSize: number) {
     this.scene = scene;
     this.hexSize = hexSize;
-    this.initializeParticleTextures();
+    this.particleEmitterManager = new ParticleEmitterManager(scene);
+    // Textures are now managed by TextureFactory, initialized in GameEngine
     this.initializeObjectPools();
-  }
-
-  private initializeParticleTextures() {
-    // Create glow texture for discovery effects
-    const glowGraphics = this.scene.add.graphics();
-    glowGraphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 1, 1, 0.5, 0);
-    glowGraphics.fillCircle(16, 16, 16);
-    glowGraphics.generateTexture('glow-particle', 32, 32);
-    glowGraphics.destroy();
-
-    // Create sparkle texture for construction completion
-    const sparkleGraphics = this.scene.add.graphics();
-    sparkleGraphics.fillStyle(0xffffff, 1);
-
-    // Create a star shape using standard Phaser methods
-    const starPoints = [];
-    const outerRadius = 8;
-    const innerRadius = 4;
-    const totalPoints = 5;
-
-    for (let i = 0; i < totalPoints * 2; i++) {
-      const radius = i % 2 === 0 ? outerRadius : innerRadius;
-      const angle = (i * Math.PI) / totalPoints;
-      starPoints.push({
-        x: 8 + radius * Math.cos(angle - Math.PI / 2),
-        y: 8 + radius * Math.sin(angle - Math.PI / 2)
-      });
-    }
-
-    sparkleGraphics.beginPath();
-    sparkleGraphics.moveTo(starPoints[0].x, starPoints[0].y);
-
-    for (let i = 1; i < starPoints.length; i++) {
-      sparkleGraphics.lineTo(starPoints[i].x, starPoints[i].y);
-    }
-
-    sparkleGraphics.closePath();
-    sparkleGraphics.fillPath();
-    sparkleGraphics.generateTexture('sparkle-particle', 16, 16);
-    sparkleGraphics.destroy();
-
-    // Create resource-specific particle textures
-    Object.entries(resourceData).forEach(([resourceType, data]) => {
-      const resourceGraphics = this.scene.add.graphics();
-      const color = Phaser.Display.Color.HexStringToColor(data.color).color;
-      resourceGraphics.fillStyle(color, 0.8);
-      resourceGraphics.fillCircle(6, 6, 6);
-      resourceGraphics.generateTexture(`${resourceType}-particle`, 12, 12);
-      resourceGraphics.destroy();
-    });
-
-    // Create light ray texture
-    const lightGraphics = this.scene.add.graphics();
-    lightGraphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0.8, 0.8, 0, 0);
-    lightGraphics.fillRect(0, 0, 4, 40);
-    lightGraphics.generateTexture('light-ray', 4, 40);
-    lightGraphics.destroy();
   }
 
   private initializeObjectPools() {
@@ -118,7 +69,6 @@ export class GameAnimationSystem {
     //   graphics.isPooled = true;
     //   this.graphicsPool.push(graphics);
     // }
-
     // Pre-create text objects for pooling
     // for (let i = 0; i < 10; i++) {
     //   const text = this.scene.add.text(0, 0, '', {
@@ -169,16 +119,16 @@ export class GameAnimationSystem {
     let text = this.textPool.pop();
 
     if (!text) {
-      text = this.scene.add.text(0, 0, '', {
-        fontSize: '16px',
-        color: '#ffffff'
+      text = this.scene.add.text(0, 0, "", {
+        fontSize: "16px",
+        color: "#ffffff",
       }) as PooledText;
       text.isPooled = true;
     }
 
     text.setActive(true);
     text.setVisible(true);
-    text.setText('');
+    text.setText("");
 
     // Force recreation of the text context
     if (text.displayList === null || text.displayList === undefined) {
@@ -205,28 +155,40 @@ export class GameAnimationSystem {
   }
 
   // 1. Resource Discovery Animation
-  public createResourceDiscoveryAnimation(config: ResourceDiscoveryConfig): Promise<void> {
+  public createResourceDiscoveryAnimation(
+    config: ResourceDiscoveryConfig
+  ): Promise<void> {
     return new Promise((resolve) => {
       const pixel = cubeToPixel(config.coords, this.hexSize);
       const resourceInfo = resourceData[config.resourceType];
-      const color = Phaser.Display.Color.HexStringToColor(resourceInfo.color).color;
+      const color = Phaser.Display.Color.HexStringToColor(
+        resourceInfo.color
+      ).color;
 
       // Phase 1: Initial glow effect (500ms)
       this.createGlowEffect(pixel, color, 500).then(() => {
-
         // Phase 2: Particle burst (800ms)
-        this.createResourceParticleBurst(pixel, config.resourceType, 800).then(() => {
-
-          // Phase 3: Resource counter increment (1000ms)
-          this.createResourceCounterAnimation(config.resourceType, config.amount, 1000).then(() => {
-            resolve();
-          });
-        });
+        this.createResourceParticleBurst(pixel, config.resourceType, 800).then(
+          () => {
+            // Phase 3: Resource counter increment (1000ms)
+            this.createResourceCounterAnimation(
+              config.resourceType,
+              config.amount,
+              1000
+            ).then(() => {
+              resolve();
+            });
+          }
+        );
       });
     });
   }
 
-  private createGlowEffect(position: { x: number; y: number }, color: number, duration: number): Promise<void> {
+  private createGlowEffect(
+    position: { x: number; y: number },
+    color: number,
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       // Get pooled graphics object
       const glowRing = this.getPooledGraphics();
@@ -236,8 +198,8 @@ export class GameAnimationSystem {
       const tween = this.scene.tweens.add({
         targets: glowRing,
         duration: duration,
-        ease: 'Power2',
-        onUpdate: (tween) => {
+        ease: "Power2",
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
           const progress = tween.progress;
           const radius = this.hexSize * (0.5 + progress * 1.5);
           const alpha = 0.8 * (1 - progress);
@@ -254,58 +216,68 @@ export class GameAnimationSystem {
           this.returnGraphicsToPool(glowRing);
           this.activeAnimations.delete(tween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(tween);
     });
   }
 
-  private createResourceParticleBurst(position: { x: number; y: number }, resourceType: ResourceType, duration: number): Promise<void> {
+  private createResourceParticleBurst(
+    position: { x: number; y: number },
+    resourceType: ResourceType,
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       const resourceInfo = resourceData[resourceType];
-      const color = Phaser.Display.Color.HexStringToColor(resourceInfo.color).color;
+      const color = Phaser.Display.Color.HexStringToColor(
+        resourceInfo.color
+      ).color;
 
       // Adjust particle count based on performance mode
       const particleCount = this.performanceMode ? 8 : 15;
 
-      // Make sure the texture exists before creating the emitter
-      const textureKey = `${resourceType}-particle`;
+      // Get texture key from TextureFactory
+      const textureKey = TextureFactory.getResourceParticleKey(resourceType);
       if (!this.scene.textures.exists(textureKey)) {
-        // console.warn(`createResourceParticleBurst > texture [${textureKey}] not found, creating fallback texture`);
-        // Create a fallback texture if the specific one doesn't exist
-        const fallbackGraphics = this.scene.add.graphics();
-        fallbackGraphics.fillStyle(color, 0.8);
-        fallbackGraphics.fillCircle(6, 6, 6);
-        fallbackGraphics.generateTexture(textureKey, 12, 12);
-        fallbackGraphics.destroy();
+        console.warn(
+          `createResourceParticleBurst > texture [${textureKey}] not found. Ensure TextureFactory.initialize() was called.`
+        );
+        resolve();
+        return;
       }
 
-      // Create particle emitter
-      const emitter = this.scene.add.particles(position.x, position.y, textureKey, {
-        speed: { min: 50, max: 150 },
-        scale: { start: 1.2, end: 0.3 },
-        alpha: { start: 1, end: 0 },
-        tint: color,
-        lifespan: duration * 0.8,
-        quantity: particleCount,
-        frequency: -1, // Burst mode
-        emitZone: {
-          type: 'edge',
-          source: new Phaser.Geom.Circle(0, 0, this.hexSize * 0.3),
-          quantity: particleCount
+      // Create particle emitter using manager
+      const emitterId = this.particleEmitterManager.createEmitter({
+        x: position.x,
+        y: position.y,
+        texture: textureKey,
+        config: {
+          speed: { min: 50, max: 150 },
+          scale: { start: 1.2, end: 0.3 },
+          alpha: { start: 1, end: 0 },
+          tint: color,
+          lifespan: duration * 0.8,
+          quantity: particleCount,
+          frequency: -1, // Burst mode
+          emitZone: {
+            type: "edge",
+            source: new Phaser.Geom.Circle(0, 0, this.hexSize * 0.3),
+            quantity: particleCount,
+          },
+          gravityY: 50,
+          bounce: 0.3,
         },
-        gravityY: 50,
-        bounce: 0.3
+        autoDestroy: true,
+        autoDestroyDelay: duration * 0.8,
       });
 
       // Add floating resource icon using pooled text
       const resourceIcon = this.getPooledText();
-      // console.log(`createResourceParticleBurst [${resourceType}]`, resourceInfo, resourceIcon);
       resourceIcon.setText(resourceInfo.emoji);
       resourceIcon.setStyle({
-        fontSize: '24px',
-        align: 'center'
+        fontSize: "24px",
+        align: "center",
       });
       resourceIcon.setPosition(position.x, position.y);
       resourceIcon.setOrigin(0.5);
@@ -318,20 +290,24 @@ export class GameAnimationSystem {
         scale: { from: 1, to: 1.5 },
         alpha: { from: 1, to: 0 },
         duration: duration,
-        ease: 'Power2',
+        ease: "Power2",
         onComplete: () => {
           this.returnTextToPool(resourceIcon);
-          emitter.destroy();
+          this.particleEmitterManager.destroyEmitter(emitterId);
           this.activeAnimations.delete(iconTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(iconTween);
     });
   }
 
-  private createResourceCounterAnimation(resourceType: ResourceType, amount: number, duration: number): Promise<void> {
+  private createResourceCounterAnimation(
+    resourceType: ResourceType,
+    amount: number,
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       // This would typically update the UI counter with a smooth increment
       // For now, we'll create a floating text effect
@@ -340,9 +316,9 @@ export class GameAnimationSystem {
       const floatingText = this.getPooledText();
       floatingText.setText(`+${amount}`);
       floatingText.setStyle({
-        fontSize: '20px',
+        fontSize: "20px",
         color: resourceData[resourceType].color,
-        fontStyle: 'bold'
+        fontStyle: "bold",
       });
       floatingText.setPosition(hudPosition.x, hudPosition.y);
       floatingText.setOrigin(0.5);
@@ -354,12 +330,12 @@ export class GameAnimationSystem {
         alpha: { from: 1, to: 0 },
         scale: { from: 1.2, to: 0.8 },
         duration: duration,
-        ease: 'Power2',
+        ease: "Power2",
         onComplete: () => {
           this.returnTextToPool(floatingText);
           this.activeAnimations.delete(textTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(textTween);
@@ -367,19 +343,18 @@ export class GameAnimationSystem {
   }
 
   // 2. Construction/Upgrade Completion Animation
-  public createConstructionCompletionAnimation(config: ConstructionCompletionConfig): Promise<void> {
+  public createConstructionCompletionAnimation(
+    config: ConstructionCompletionConfig
+  ): Promise<void> {
     return new Promise((resolve) => {
       const pixel = cubeToPixel(config.coords, this.hexSize);
 
       // Phase 1: Building outline pulse (300ms)
       this.createBuildingPulse(pixel, 300).then(() => {
-
         // Phase 2: Rising sparkle particles
         this.createRisingSparkles(pixel, 800).then(() => {
-
           // Phase 3: Structure scale bounce (400ms)
           this.createScaleBounce(pixel, 400).then(() => {
-
             // Display floating level text
             this.createFloatingLevelText(pixel, config.level, 600).then(() => {
               resolve();
@@ -390,7 +365,10 @@ export class GameAnimationSystem {
     });
   }
 
-  private createBuildingPulse(position: { x: number; y: number }, duration: number): Promise<void> {
+  private createBuildingPulse(
+    position: { x: number; y: number },
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       const pulseOutline = this.getPooledGraphics();
       pulseOutline.setPosition(position.x, position.y);
@@ -398,10 +376,10 @@ export class GameAnimationSystem {
       const pulseTween = this.scene.tweens.add({
         targets: pulseOutline,
         duration: duration,
-        ease: 'Power2',
+        ease: "Power2",
         yoyo: true,
         repeat: 1,
-        onUpdate: (tween) => {
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
           const progress = tween.progress;
           const scale = 1 + progress * 0.3;
           const alpha = 0.8 * (1 - progress * 0.5);
@@ -412,9 +390,9 @@ export class GameAnimationSystem {
           // Draw hexagonal building outline
           const hexPoints = getHexPoints(0, 0, this.hexSize * scale);
           pulseOutline.beginPath();
-          pulseOutline.moveTo(hexPoints[0].x, hexPoints[0].y);
+          pulseOutline.moveTo(hexPoints[0]!.x, hexPoints[0]!.y);
           for (let i = 1; i < hexPoints.length; i++) {
-            pulseOutline.lineTo(hexPoints[i].x, hexPoints[i].y);
+            pulseOutline.lineTo(hexPoints[i]!.x, hexPoints[i]!.y);
           }
           pulseOutline.closePath();
           pulseOutline.strokePath();
@@ -423,51 +401,64 @@ export class GameAnimationSystem {
           this.returnGraphicsToPool(pulseOutline);
           this.activeAnimations.delete(pulseTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(pulseTween);
     });
   }
 
-  private createRisingSparkles(position: { x: number; y: number }, duration: number): Promise<void> {
+  private createRisingSparkles(
+    position: { x: number; y: number },
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       // Adjust particle count based on performance mode
       const particleCount = this.performanceMode ? 1 : 2;
       const frequency = this.performanceMode ? 100 : 50;
 
-      const sparkleEmitter = this.scene.add.particles(position.x, position.y + this.hexSize * 0.5, 'sparkle-particle', {
-        x: { min: -this.hexSize * 0.3, max: this.hexSize * 0.3 },
-        y: 0,
-        speedY: { min: -80, max: -40 },
-        speedX: { min: -20, max: 20 },
-        scale: { start: 0.8, end: 0.2 },
-        alpha: { start: 1, end: 0 },
-        tint: [0xffd700, 0xffffff, 0x00ff00],
-        lifespan: duration,
-        frequency: frequency,
-        quantity: particleCount,
-        gravityY: -20
+      this.particleEmitterManager.createEmitter({
+        x: position.x,
+        y: position.y + this.hexSize * 0.5,
+        texture: TextureKeys.SPARKLE_STAR_PARTICLE,
+        config: {
+          x: { min: -this.hexSize * 0.3, max: this.hexSize * 0.3 },
+          y: 0,
+          speedY: { min: -80, max: -40 },
+          speedX: { min: -20, max: 20 },
+          scale: { start: 0.8, end: 0.2 },
+          alpha: { start: 1, end: 0 },
+          tint: [0xffd700, 0xffffff, 0x00ff00],
+          lifespan: duration,
+          frequency: frequency,
+          quantity: particleCount,
+          gravityY: -20,
+        },
+        autoDestroy: true,
+        autoDestroyDelay: duration,
       });
 
-      this.scene.time.delayedCall(duration, () => {
-        sparkleEmitter.destroy();
-        resolve();
-      });
+      // Resolve immediately since manager handles cleanup
+      resolve();
     });
   }
 
-  private createScaleBounce(position: { x: number; y: number }, duration: number): Promise<void> {
+  private createScaleBounce(
+    position: { x: number; y: number },
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       // Find the building sprite at this position (simplified)
-      const buildingSprite = this.scene.children.list.find(child =>
-        'x' in child && 'y' in child &&
-        // @ts-expect-error ignore
-        (child as never).x === position.x &&
-        // @ts-expect-error ignore
-        (child as never).y === position.y &&
-        child.type === 'Text'
-      ) as Phaser.GameObjects.Text;
+      const buildingSprite = this.scene.children.list.find(
+        (child): child is Phaser.GameObjects.Text =>
+          child instanceof Phaser.GameObjects.Text &&
+          "x" in child &&
+          "y" in child &&
+          (child as Phaser.GameObjects.Text & { x: number; y: number }).x ===
+            position.x &&
+          (child as Phaser.GameObjects.Text & { x: number; y: number }).y ===
+            position.y
+      );
 
       if (buildingSprite) {
         const bounceTween = this.scene.tweens.add({
@@ -475,12 +466,12 @@ export class GameAnimationSystem {
           scaleX: { from: 1, to: 1.1 },
           scaleY: { from: 1, to: 1.1 },
           duration: duration * 0.6,
-          ease: 'Back.easeOut',
+          ease: "Back.easeOut",
           yoyo: true,
           onComplete: () => {
             this.activeAnimations.delete(bounceTween);
             resolve();
-          }
+          },
         });
 
         this.activeAnimations.add(bounceTween);
@@ -490,16 +481,20 @@ export class GameAnimationSystem {
     });
   }
 
-  private createFloatingLevelText(position: { x: number; y: number }, level: number, duration: number): Promise<void> {
+  private createFloatingLevelText(
+    position: { x: number; y: number },
+    level: number,
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       const levelText = this.getPooledText();
       levelText.setText(`+Level ${level}`);
       levelText.setStyle({
-        fontSize: '16px',
-        color: '#00ff00',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 2
+        fontSize: "16px",
+        color: "#00ff00",
+        fontStyle: "bold",
+        stroke: "#000000",
+        strokeThickness: 2,
       });
       levelText.setPosition(position.x, position.y - 20);
       levelText.setOrigin(0.5);
@@ -511,12 +506,12 @@ export class GameAnimationSystem {
         alpha: { from: 1, to: 0 },
         scale: { from: 1.2, to: 0.8 },
         duration: duration,
-        ease: 'Power2',
+        ease: "Power2",
         onComplete: () => {
           this.returnTextToPool(levelText);
           this.activeAnimations.delete(textTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(textTween);
@@ -530,7 +525,6 @@ export class GameAnimationSystem {
 
       // Create gradient-based fog dissolution
       this.createFogDissolution(pixel, config.revealRadius, 1000).then(() => {
-
         // Add light rays emanating from player position
         this.createLightRays(pixel, 800).then(() => {
           resolve();
@@ -539,7 +533,11 @@ export class GameAnimationSystem {
     });
   }
 
-  private createFogDissolution(position: { x: number; y: number }, radius: number, duration: number): Promise<void> {
+  private createFogDissolution(
+    position: { x: number; y: number },
+    radius: number,
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       // Create fog overlay using pooled graphics
       const fogOverlay = this.getPooledGraphics();
@@ -549,8 +547,8 @@ export class GameAnimationSystem {
       const dissolveTween = this.scene.tweens.add({
         targets: fogOverlay,
         duration: duration,
-        ease: 'Power2',
-        onUpdate: (tween) => {
+        ease: "Power2",
+        onUpdate: (tween: Phaser.Tweens.Tween) => {
           const progress = tween.progress;
           const currentRadius = radius * this.hexSize * progress;
 
@@ -560,7 +558,7 @@ export class GameAnimationSystem {
           const ringCount = this.performanceMode ? 5 : 10;
           for (let i = 0; i < ringCount; i++) {
             const alpha = 0.6 * (1 - progress) * (1 - i / ringCount);
-            const ringRadius = currentRadius + (i * 5);
+            const ringRadius = currentRadius + i * 5;
 
             fogOverlay.lineStyle(3, 0x1a1a2e, alpha);
             fogOverlay.strokeCircle(0, 0, ringRadius);
@@ -570,21 +568,28 @@ export class GameAnimationSystem {
           this.returnGraphicsToPool(fogOverlay);
           this.activeAnimations.delete(dissolveTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(dissolveTween);
     });
   }
 
-  private createLightRays(position: { x: number; y: number }, duration: number): Promise<void> {
+  private createLightRays(
+    position: { x: number; y: number },
+    duration: number
+  ): Promise<void> {
     return new Promise((resolve) => {
       const rayCount = this.performanceMode ? 4 : 8;
       const rays: Phaser.GameObjects.Image[] = [];
 
       for (let i = 0; i < rayCount; i++) {
         const angle = (i / rayCount) * Math.PI * 2;
-        const ray = this.scene.add.image(position.x, position.y, 'light-ray');
+        const ray = this.scene.add.image(
+          position.x,
+          position.y,
+          TextureKeys.LIGHT_RAY
+        );
         ray.setOrigin(0.5, 1);
         ray.setRotation(angle);
         ray.setAlpha(0);
@@ -598,13 +603,13 @@ export class GameAnimationSystem {
         alpha: { from: 0, to: 0.6 },
         scaleY: { from: 1, to: 2 },
         duration: duration * 0.6,
-        ease: 'Power2',
+        ease: "Power2",
         yoyo: true,
         onComplete: () => {
-          rays.forEach(ray => ray.destroy());
+          rays.forEach((ray) => ray.destroy());
           this.activeAnimations.delete(rayTween);
           resolve();
-        }
+        },
       });
 
       this.activeAnimations.add(rayTween);
@@ -613,29 +618,26 @@ export class GameAnimationSystem {
 
   // Performance and cleanup methods
   public cancelAllAnimations(): void {
-    this.activeAnimations.forEach(tween => {
+    this.activeAnimations.forEach((tween) => {
       if (tween.isActive()) {
         tween.stop();
       }
     });
     this.activeAnimations.clear();
 
-    this.particleEmitters.forEach(emitter => {
-      if (emitter.active) {
-        emitter.destroy();
-      }
-    });
-    this.particleEmitters.clear();
+    // Destroy all particle emitters through manager
+    this.particleEmitterManager.destroyAll();
   }
 
   public setPerformanceMode(enabled: boolean): void {
     this.performanceMode = enabled;
+    this.particleEmitterManager.setPerformanceMode(enabled);
 
     if (enabled) {
       // Reduce animation complexity for mobile/low-end devices
-      console.log('Animation system: Performance mode enabled');
+      console.log("Animation system: Performance mode enabled");
     } else {
-      console.log('Animation system: Full quality mode enabled');
+      console.log("Animation system: Full quality mode enabled");
     }
   }
 
@@ -646,18 +648,82 @@ export class GameAnimationSystem {
   public getPoolStats(): { graphics: number; text: number } {
     return {
       graphics: this.graphicsPool.length,
-      text: this.textPool.length
+      text: this.textPool.length,
     };
+  }
+
+  // 4. Disaster Animation
+  public createDisasterAnimation(
+    config: DisasterAnimationConfig
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const { disasterId, affectedTiles } = config;
+
+      // Get texture key from TextureKeys
+      const textureKeyMap: Readonly<Record<string, string>> = {
+        earthquake: TextureKeys.EARTHQUAKE,
+        sandstorm: TextureKeys.SANDSTORM,
+        wildfire: TextureKeys.WILDFIRE,
+        tsunami: TextureKeys.TSUNAMI,
+        storm: TextureKeys.STORM,
+      } as const;
+
+      const textureKey: string | undefined = textureKeyMap[disasterId];
+      if (!textureKey) {
+        console.warn(`Unknown disaster ID: ${disasterId}`);
+        resolve();
+        return;
+      }
+
+      // Screen shake for earthquakes
+      if (disasterId === "earthquake") {
+        this.scene.cameras.main.shake(500, 0.05); // Increased intensity for more visible shake
+      }
+
+      // Create disaster sprites on affected tiles
+      const animations: Promise<void>[] = affectedTiles.map((coords) => {
+        return new Promise((tileResolve) => {
+          const pixel = cubeToPixel(coords, this.hexSize);
+          const sprite = this.scene.add.sprite(pixel.x, pixel.y, textureKey);
+          sprite.setDepth(1500);
+          sprite.setAlpha(0.8);
+
+          // Animate the disaster effect
+          const tween = this.scene.tweens.add({
+            targets: sprite,
+            alpha: { from: 0.8, to: 0 },
+            scale: { from: 1, to: 1.5 },
+            duration: 2000,
+            ease: "Power2",
+            onComplete: () => {
+              sprite.destroy();
+              this.activeAnimations.delete(tween);
+              tileResolve();
+            },
+          });
+
+          this.activeAnimations.add(tween);
+        });
+      });
+
+      // Wait for all animations to complete
+      Promise.all(animations).then(() => {
+        resolve();
+      });
+    });
   }
 
   public destroy(): void {
     this.cancelAllAnimations();
 
+    // Destroy particle emitter manager
+    this.particleEmitterManager.destroy();
+
     // Destroy all pooled objects
-    this.graphicsPool.forEach(graphics => graphics.destroy());
+    this.graphicsPool.forEach((graphics) => graphics.destroy());
     this.graphicsPool = [];
 
-    this.textPool.forEach(text => text.destroy());
+    this.textPool.forEach((text) => text.destroy());
     this.textPool = [];
   }
 }

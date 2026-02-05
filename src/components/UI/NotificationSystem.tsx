@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
 import { ActivityLog } from './ActivityLog';
@@ -23,7 +23,7 @@ interface NotificationSettings {
 }
 
 export const NotificationSystem: React.FC = () => {
-  const { roundNumber, gameMode, currentPhase, showPhaseOverlay } = useSelector((state: RootState) => state.game);
+  const { gameMode, currentPhase, showPhaseOverlay } = useSelector((state: RootState) => state.game);
   const [settings, setSettings] = useState<NotificationSettings>({
     soundEnabled: true,
     phaseOverlaysEnabled: true,
@@ -35,17 +35,16 @@ export const NotificationSystem: React.FC = () => {
   const [activityLogMinimized, setActivityLogMinimized] = useState(false);
 
   // Sound effects for phase changes
-  useEffect(() => {
-    if (settings.soundEnabled && showPhaseOverlay) {
-      playPhaseSound(currentPhase);
-    }
-  }, [currentPhase, showPhaseOverlay, settings.soundEnabled]);
-
-  const playPhaseSound = (phase: GamePhase) => {
+  const playPhaseSound = useCallback((phase: GamePhase) => {
     if (!settings.soundEnabled) return;
 
     // Create audio context for sound effects
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextClass = window.AudioContext || 
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    
+    if (!AudioContextClass) return;
+    
+    const audioContext = new AudioContextClass();
 
     const playTone = (frequency: number, duration: number, type: OscillatorType = 'sine') => {
       const oscillator = audioContext.createOscillator();
@@ -85,7 +84,14 @@ export const NotificationSystem: React.FC = () => {
       default:
         playTone(330, 0.2); // Default notification sound
     }
-  };
+  }, [settings.soundEnabled]);
+
+  // Trigger sound effects when phase changes
+  useEffect(() => {
+    if (settings.soundEnabled && showPhaseOverlay) {
+      playPhaseSound(currentPhase);
+    }
+  }, [currentPhase, showPhaseOverlay, settings.soundEnabled, playPhaseSound]);
 
   const updateSetting = <K extends keyof NotificationSettings>(
     key: K,

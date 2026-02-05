@@ -1,5 +1,6 @@
 // Game data configuration for party game format
 import { Droplets, Waves, Mountain, Flag, Diamond, Trees } from "lucide-react";
+import React from "react";
 import { BuildingData, buildingDatabase, BuildingType } from "./buildingsData.ts";
 import { CubeCoords } from "../utils/hexGrid";
 
@@ -55,7 +56,7 @@ export interface TerrainTypeData {
   moveCost: number;
   defenseBonus: number;
   color: string;
-  icon: any;
+  icon: React.ComponentType<{ className?: string; size?: string | number }> | null;
   requiredItem?: string; // Item required to move to this tile
   alternativeAPCost?: number; // Extra AP cost if no required item
   effects?: {
