@@ -898,8 +898,7 @@ const gameSlice = createSlice({
           const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
           const harvestedItem = {
             ...itemTemplate,
-            minUses: uses,
-            maxUses: uses
+            availableUses: uses
           };
           playerStats.items.push(harvestedItem);
         }

@@ -32,6 +32,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
 
   // Initialize Phaser game
   useEffect(() => {
+    let pollTimerId: ReturnType<typeof setTimeout> | null = null;
+
     if (!gameRef.current) {
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
@@ -52,13 +54,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
 
       gameRef.current = new Phaser.Game(config);
 
-      // Use a safer approach to wait for the scene to be ready
+      const MAX_POLL_ATTEMPTS = 50;
+      let pollAttempts = 0;
+
       const checkForScene = () => {
+        pollAttempts++;
         if (gameRef.current && gameRef.current.scene.isActive('GameScene')) {
           sceneRef.current = gameRef.current.scene.getScene('GameScene') as GameScene;
 
           if (sceneRef.current) {
-            // Initialize scene with current game state
             sceneRef.current.initializeScene({
               tiles,
               onTileClick: handleTileClick,
@@ -66,60 +70,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
               showPlayerNumbers
             });
           }
-        } else {
-          // Try again in a short while
-          setTimeout(checkForScene, 100);
+        } else if (pollAttempts < MAX_POLL_ATTEMPTS) {
+          pollTimerId = setTimeout(checkForScene, 100);
         }
       };
 
       checkForScene();
-
-      // Wait for scene to be ready
-      // gameRef.current.events.once('ready', () => {
-      // Wait for scene to be fully started
-      // gameRef.current.scene.getScene('GameScene').events.once('start', () => {
-      // Wait for scene to be fully created and started
-      // gameRef.current.scene.getScene('GameScene').events.once('create', () => {
-      //   sceneRef.current = gameRef.current?.scene.getScene('GameScene') as GameScene;
-      //
-      //   if (sceneRef.current) {
-      //     // Initialize scene with current game state
-      //     sceneRef.current.initializeScene({
-      //       tiles,
-      //       onTileClick: handleTileClick,
-      //       onTileHover: handleTileHover,
-      //       showFogOfWar
-      //     });
-      //   }
-      // });
     }
 
     return () => {
+      if (pollTimerId !== null) {
+        clearTimeout(pollTimerId);
+      }
+
       if (gameRef.current) {
-        // Properly shut down the scene before destroying the game
         if (sceneRef.current && sceneRef.current.scene.isActive()) {
-          // Call any custom cleanup in your scene
           try {
-            // Call our custom cleanup method first
             if (typeof sceneRef.current.cleanup === 'function') {
               sceneRef.current.cleanup();
             }
-
-            // This will call your custom destroy method in GameScene
             gameRef.current.scene.remove('GameScene');
           } catch (error) {
             console.error('Error shutting down scene:', error);
           }
         }
 
-        // Now destroy the entire game instance
         gameRef.current.destroy(true);
         gameRef.current = null;
         sceneRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array - only run once on mount
+  }, []);
 
   // Update tiles when Redux state changes
   useEffect(() => {

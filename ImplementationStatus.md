@@ -6,49 +6,33 @@ Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs
 
 ---
 
-## Phase 1: Critical Runtime Bugs (Must Fix First)
+## Phase 1: Critical Runtime Bugs -- RESOLVED
 
-These issues cause crashes, infinite loops, or fundamentally broken behavior.
+All critical runtime bugs have been fixed.
 
-### 1.1 Console.log in Game Loop (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 122
-- **Issue:** `console.log("GameScene > update()")` fires every single frame, flooding the console and degrading performance significantly.
-- **Fix:** Remove the console.log call entirely.
+### 1.1 Console.log in Game Loop (GameEngine.ts) -- FIXED
+- Removed `console.log` from the `update()` method that was firing every frame.
 
-### 1.2 Cursor Keys Recreated Every Frame (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 124
-- **Issue:** `this.input.keyboard?.createCursorKeys()` is called inside `update()`, creating new cursor key objects on every frame tick instead of once in `create()`.
-- **Fix:** Move cursor key creation to `create()`, store reference as class property, use stored reference in `update()`.
+### 1.2 Cursor Keys Recreated Every Frame (GameEngine.ts) -- FIXED
+- Moved `createCursorKeys()` to `create()`, stored as class property `this.cursors`, removed recreation in `update()`.
 
-### 1.3 Recursive Polling Without Cleanup (GameCanvas.tsx)
-- **File:** `src/components/GameCanvas.tsx` ~line 57-71
-- **Issue:** `checkForScene()` calls itself via `setTimeout` recursively. If the scene never initializes or the component unmounts during polling, the timeout chain continues indefinitely causing memory leaks.
-- **Fix:** Store the timeout ID and clear it in the useEffect cleanup function. Add a max retry count.
+### 1.3 Recursive Polling Without Cleanup (GameCanvas.tsx) -- FIXED
+- Added timeout ID tracking, `clearTimeout` in cleanup, and max retry limit (50 attempts).
 
-### 1.4 Missing Type Exports (buildingSystem.ts)
-- **File:** `src/store/buildingSystem.ts` ~line 2
-- **Issue:** Imports `Building`, `City`, `GameState` from `./gameSlice` but these types are not exported (or not defined) in gameSlice.ts. This is a compilation-breaking type mismatch.
-- **Fix:** Define and export the `Building` and `City` interfaces from gameSlice.ts, or move them to a shared types file.
+### 1.4 Missing Type Exports (buildingSystem.ts) -- REMOVED
+- File was removed from the project (legacy code).
 
-### 1.5 Item Type Mismatch: availableUses vs minUses/maxUses (gameSlice.ts)
-- **File:** `src/store/gameSlice.ts` ~line 898-903
-- **Issue:** When harvesting items, code assigns `minUses` and `maxUses` properties but the `ItemData` interface expects `availableUses`. This creates items with missing required fields.
-- **Fix:** Assign `availableUses` correctly when creating harvested items. Remove `minUses`/`maxUses` from the spread.
+### 1.5 Item Type Mismatch: availableUses vs minUses/maxUses (gameSlice.ts) -- FIXED
+- Changed `harvestFromTile` reducer to set `availableUses` (matching `consumeItemUse` and `craftItem` patterns) instead of overriding `minUses`/`maxUses`.
 
-### 1.6 ActivityLog Auto-Scroll Direction (ActivityLog.tsx)
-- **File:** `src/components/UI/ActivityLog.tsx` ~line 47
-- **Issue:** Auto-scroll sets `scrollTop = 0`, scrolling to the TOP of the log instead of the bottom. Users cannot see the most recent events.
-- **Fix:** Set `scrollTop = scrollHeight` to scroll to the bottom.
+### 1.6 ActivityLog Auto-Scroll Direction (ActivityLog.tsx) -- NOT A BUG
+- Events are prepended via `unshift` (newest first), so `scrollTop = 0` correctly scrolls to the newest events. Logic is consistent.
 
-### 1.7 BuildingPanel Crash on Empty Cities (BuildingPanel.tsx)
-- **File:** `src/components/UI/BuildingPanel.tsx` ~line 26
-- **Issue:** Always accesses `cities[0]` without checking if the cities array is empty. Crashes with undefined access if no cities exist.
-- **Fix:** Add null/empty array guard before accessing cities.
+### 1.7 BuildingPanel Crash on Empty Cities (BuildingPanel.tsx) -- REMOVED
+- File was removed from the project (legacy code).
 
-### 1.8 Texture Name Conflict: sparkle-particle
-- **Files:** `src/game/AnimationSystem.ts` ~line 91, `src/game/ParticleSystem.ts` ~line 63
-- **Issue:** Both systems create a texture with key `'sparkle-particle'` but with different implementations (16x16 star vs 2x2 circle). Last to initialize wins, causing visual inconsistency.
-- **Fix:** Rename to unique keys (`sparkle-star-particle`, `sparkle-dot-particle`) and update all references.
+### 1.8 Texture Name Conflict: sparkle-particle -- ALREADY RESOLVED
+- The `TextureFactory` already uses unique keys (`sparkle-star-particle`, `sparkle-dot-particle`). Both `AnimationSystem` and `ParticleSystem` reference `TextureKeys` constants correctly.
 
 ---
 

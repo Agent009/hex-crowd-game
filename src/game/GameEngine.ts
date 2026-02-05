@@ -29,6 +29,7 @@ export class GameScene extends Phaser.Scene {
   private onTileHover?: (coords: CubeCoords | null) => void;
   private showPlayerNumbers: boolean = true;
   private isInitialized: boolean = false;
+  private cursors: Phaser.Types.Input.Keyboard.CursorKeys | undefined;
 
   constructor() {
     super({ key: "GameScene" });
@@ -86,13 +87,7 @@ export class GameScene extends Phaser.Scene {
     // Initialize animation system
     this.animationSystem = new GameAnimationSystem(this, this.hexSize);
 
-    // Add keyboard controls
-    const cursors = this.input.keyboard?.createCursorKeys();
-    if (cursors) {
-      // Handle camera movement in update loop
-    }
-
-    console.log("GameScene setup complete");
+    this.cursors = this.input.keyboard?.createCursorKeys();
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -119,15 +114,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    console.log("GameScene > update()");
-    // Handle camera movement
-    const cursors = this.input.keyboard?.createCursorKeys();
-    if (cursors) {
+    if (this.cursors) {
       const speed = 5;
-      if (cursors.left?.isDown) this.cameras.main.scrollX -= speed;
-      if (cursors.right?.isDown) this.cameras.main.scrollX += speed;
-      if (cursors.up?.isDown) this.cameras.main.scrollY -= speed;
-      if (cursors.down?.isDown) this.cameras.main.scrollY += speed;
+      if (this.cursors.left?.isDown) this.cameras.main.scrollX -= speed;
+      if (this.cursors.right?.isDown) this.cameras.main.scrollX += speed;
+      if (this.cursors.up?.isDown) this.cameras.main.scrollY -= speed;
+      if (this.cursors.down?.isDown) this.cameras.main.scrollY += speed;
     }
   }
 
