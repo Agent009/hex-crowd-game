@@ -52,7 +52,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
         scene: GameScene
       };
 
-      gameRef.current = new Phaser.Game(config);
+      try {
+        gameRef.current = new Phaser.Game(config);
+      } catch (error) {
+        console.error('Failed to initialize Phaser game:', error);
+        return;
+      }
 
       const MAX_POLL_ATTEMPTS = 50;
       let pollAttempts = 0;

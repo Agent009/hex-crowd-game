@@ -11,7 +11,7 @@ import {
   Move,
   Sparkles
 } from 'lucide-react';
-import {GameScene} from "../../game/GameEngine.ts";
+import {GameScene} from "../../game/GameEngine";
 
 interface HexActionMenuProps {
   onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting') => void;
@@ -94,8 +94,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     };
   };
 
-  const enableHarvestResource = canHarvest() && currentPlayerStats!.actionPoints >= 1;
-  const enableHarvestItem = canHarvest() && currentPlayerStats!.actionPoints >= 3;
+  const enableHarvestResource = canHarvest() && (currentPlayerStats?.actionPoints ?? 0) >= 1;
+  const enableHarvestItem = canHarvest() && (currentPlayerStats?.actionPoints ?? 0) >= 3;
 
   const actions = [
     {

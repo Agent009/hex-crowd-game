@@ -387,12 +387,12 @@ export class GameAnimationSystem {
           pulseOutline.clear();
           pulseOutline.lineStyle(3, 0x00ff00, alpha);
 
-          // Draw hexagonal building outline
           const hexPoints = getHexPoints(0, 0, this.hexSize * scale);
+          if (hexPoints.length === 0) return;
           pulseOutline.beginPath();
-          pulseOutline.moveTo(hexPoints[0]!.x, hexPoints[0]!.y);
+          pulseOutline.moveTo(hexPoints[0].x, hexPoints[0].y);
           for (let i = 1; i < hexPoints.length; i++) {
-            pulseOutline.lineTo(hexPoints[i]!.x, hexPoints[i]!.y);
+            pulseOutline.lineTo(hexPoints[i].x, hexPoints[i].y);
           }
           pulseOutline.closePath();
           pulseOutline.strokePath();

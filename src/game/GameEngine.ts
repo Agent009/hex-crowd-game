@@ -167,7 +167,7 @@ export class GameScene extends Phaser.Scene {
     // Add terrain icon only if tile is active (not depleted)
     if (tile.isActive !== false) {
       const terrain = terrainData[tile.terrain];
-      if (terrain.icon) {
+      if (terrain?.icon) {
         // For now, we'll use text representations of terrain
         let terrainSymbol = "";
         switch (tile.terrain) {
@@ -207,8 +207,9 @@ export class GameScene extends Phaser.Scene {
 
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
+      const playerCount = tile.players.length;
       tile.players.forEach((player, index) => {
-        const offsetY = index * 20 - (tile.players!.length - 1) * 10;
+        const offsetY = index * 20 - (playerCount - 1) * 10;
 
         // Player number circle
         const playerText = this.add
@@ -274,6 +275,7 @@ export class GameScene extends Phaser.Scene {
 
     const { y } = cubeToPixel(tile.coords, this.hexSize);
     const terrain = terrainData[tile.terrain];
+    if (!terrain) return;
     const baseColor = Phaser.Display.Color.HexStringToColor(
       terrain.color
     ).color;

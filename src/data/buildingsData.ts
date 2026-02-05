@@ -1,6 +1,6 @@
 import { Coins, Sword, Crown } from "lucide-react";
 import { ExtractId } from "../utils/utils";
-import { ResourceAmount } from "./gameData.ts";
+import { ResourceAmount } from "./gameData";
 
 // Building prerequisites and constraints
 export interface BuildingConstraints {

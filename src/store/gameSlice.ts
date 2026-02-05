@@ -111,7 +111,7 @@ export interface PlayerStats {
 
 import { ItemData } from '../data/harvestData';
 import { terrainData, disasterData } from '../data/gameData';
-import {isCraftable} from "../utils/utils.ts";
+import {isCraftable} from "../utils/utils";
 
 // Helper function to get phase display name
 export const getPhaseDisplayName = (phase: GamePhase): string => {
@@ -393,8 +393,9 @@ const removeEliminatedPlayers = (state: GameState) => {
 
     // Remove from tile
     const tileKey = coordsToKey(player.position);
-    if (state.tiles[tileKey]?.players) {
-      state.tiles[tileKey].players = state.tiles[tileKey].players!.filter(p => p.id !== player.id);
+    const playerTile = state.tiles[tileKey];
+    if (playerTile?.players) {
+      playerTile.players = playerTile.players.filter(p => p.id !== player.id);
     }
 
     // Remove from the players array
@@ -485,11 +486,12 @@ const gameSlice = createSlice({
 
       // Place player on their starting tile
       const tileKey = coordsToKey(newPlayer.position);
-      if (state.tiles[tileKey]) {
-        if (!state.tiles[tileKey].players) {
-          state.tiles[tileKey].players = [];
+      const startTile = state.tiles[tileKey];
+      if (startTile) {
+        if (!startTile.players) {
+          startTile.players = [];
         }
-        state.tiles[tileKey].players!.push(newPlayer);
+        startTile.players.push(newPlayer);
       }
 
       // Initialize player stats
@@ -525,8 +527,9 @@ const gameSlice = createSlice({
 
       // Remove from tile
       const tileKey = coordsToKey(player.position);
-      if (state.tiles[tileKey]?.players) {
-        state.tiles[tileKey].players = state.tiles[tileKey].players!.filter(p => p.id !== playerId);
+      const leaveTile = state.tiles[tileKey];
+      if (leaveTile?.players) {
+        leaveTile.players = leaveTile.players.filter(p => p.id !== playerId);
       }
 
       // Remove player
@@ -652,8 +655,9 @@ const gameSlice = createSlice({
       }
       // Remove player from current tile
       const currentTileKey = coordsToKey(player.position);
-      if (state.tiles[currentTileKey]?.players) {
-        state.tiles[currentTileKey].players = state.tiles[currentTileKey].players!.filter(p => p.id !== playerId);
+      const currentTile = state.tiles[currentTileKey];
+      if (currentTile?.players) {
+        currentTile.players = currentTile.players.filter(p => p.id !== playerId);
       }
 
       // Update player position
@@ -661,14 +665,15 @@ const gameSlice = createSlice({
 
       // Add player to new tile
       const newTileKey = coordsToKey(target);
-      if (state.tiles[newTileKey]) {
-        if (!state.tiles[newTileKey].players) {
-          state.tiles[newTileKey].players = [];
+      const newTile = state.tiles[newTileKey];
+      if (newTile) {
+        if (!newTile.players) {
+          newTile.players = [];
         }
-        state.tiles[newTileKey].players!.push(player);
+        newTile.players.push(player);
 
         // Add activity event
-        const terrain = terrainData[state.tiles[newTileKey].terrain];
+        const terrain = terrainData[newTile.terrain];
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),

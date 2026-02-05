@@ -15,7 +15,7 @@ import {
   Filter,
   X
 } from 'lucide-react';
-import { ActivityEvent } from "../../store/gameSlice.ts";
+import { ActivityEvent } from "../../store/gameSlice";
 
 interface ActivityLogProps {
   isMinimized?: boolean;

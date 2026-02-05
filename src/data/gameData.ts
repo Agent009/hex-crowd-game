@@ -1,7 +1,7 @@
 // Game data configuration for party game format
 import { Droplets, Waves, Mountain, Flag, Diamond, Trees } from "lucide-react";
 import React from "react";
-import { BuildingData, buildingDatabase, BuildingType } from "./buildingsData.ts";
+import { BuildingData, buildingDatabase, BuildingType } from "./buildingsData";
 import { CubeCoords } from "../utils/hexGrid";
 
 // Player data for party game
@@ -258,8 +258,8 @@ export type ResourceAmount = {
 // Game configuration for party mode - configurable via environment variables
 export const gameSize: number = 5; // Creates 91 hex tiles total
 export const maxPlayers: number = 30;
-export const requiredTeams: number = import.meta.env.VITE_REQUIRED_TEAMS ? parseInt(import.meta.env.VITE_REQUIRED_TEAMS) : 10;
-export const requiredPlayersPerTeam: number = import.meta.env.VITE_REQUIRED_PLAYERS_PER_TEAM ? parseInt(import.meta.env.VITE_REQUIRED_PLAYERS_PER_TEAM) : 3;
+export const requiredTeams: number = parseInt(import.meta.env.VITE_REQUIRED_TEAMS) || 10;
+export const requiredPlayersPerTeam: number = parseInt(import.meta.env.VITE_REQUIRED_PLAYERS_PER_TEAM) || 3;
 export const maxTeams: number = requiredTeams;
 export const playersPerTeam: number = requiredPlayersPerTeam;
 export const isTestMode: boolean = import.meta.env.VITE_TEST_MODE === 'true';

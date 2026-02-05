@@ -36,59 +36,42 @@ All critical runtime bugs have been fixed.
 
 ---
 
-## Phase 2: Null Safety & Runtime Errors
+## Phase 2: Null Safety & Runtime Errors -- RESOLVED
 
-These issues cause intermittent crashes under specific game conditions.
+All null safety and runtime error issues have been fixed.
 
-### 2.1 Unsafe Terrain Data Lookups (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~lines 177, 284
-- **Issue:** `terrainData[tile.terrain]` accessed without null check. If terrain key is invalid, accessing `.icon`, `.color` etc. throws.
-- **Fix:** Add null check before accessing terrain properties, provide fallback values.
+### 2.1 Unsafe Terrain Data Lookups (GameEngine.ts) -- FIXED
+- Added optional chaining (`terrain?.icon`) in `renderTile` and early return guard in `_redrawTileGraphics`.
 
-### 2.2 Non-Null Assertions on Optional Players Array (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 218-219
-- **Issue:** `tile.players!.length` uses non-null assertion but `players` is defined as optional (`players?: Player[]`).
-- **Fix:** Replace `!` assertions with proper optional chaining and default values.
+### 2.2 Non-Null Assertions on Optional Players Array (GameEngine.ts) -- FIXED
+- Replaced `tile.players!.length` with a pre-computed `playerCount` variable captured before the forEach loop.
 
-### 2.3 Unsafe Disaster Data Access (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 596
-- **Issue:** `disasterData[disasterId]` accessed without null check before using `.name`.
-- **Fix:** Add existence check before accessing disaster properties.
+### 2.3 Unsafe Disaster Data Access (GameEngine.ts) -- ALREADY SAFE
+- Existing code already has `if (!disaster) { return; }` guard on line 589.
 
-### 2.4 Tile Lookup Without Null Check (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 625-626
-- **Issue:** `this.tiles.get(key)` could be undefined but is accessed with `.x` and `.y` on subsequent lines.
-- **Fix:** Add undefined check after Map.get().
+### 2.4 Tile Lookup Without Null Check (GameEngine.ts) -- ALREADY SAFE
+- Existing code already has `if (!tile) return null;` guard on line 620.
 
-### 2.5 Unsafe Tile Access in gameSlice Reducers
-- **File:** `src/store/gameSlice.ts` ~lines 488-492, 596, 612-613, 667
-- **Issue:** Multiple reducers access `state.tiles[tileKey]` without checking existence, then access `.players` which could be undefined.
-- **Fix:** Add null checks before all tile property access in reducers.
+### 2.5 Unsafe Tile Access in gameSlice Reducers -- FIXED
+- Replaced all `state.tiles[tileKey].players!` patterns with local variable binding and removed non-null assertions across `joinGame`, `leaveGame`, `movePlayer`, and `removeEliminatedPlayers` reducers.
 
-### 2.6 Non-Null Assertions in AnimationSystem
-- **File:** `src/game/AnimationSystem.ts` ~lines 393, 395, 452-461
-- **Issue:** `hexPoints[0]!.x` and similar assertions without validating array length.
-- **Fix:** Add bounds checking before accessing array elements.
+### 2.6 Non-Null Assertions in AnimationSystem -- FIXED
+- Added `hexPoints.length === 0` guard before accessing array elements. Removed `!` assertions.
 
-### 2.7 ParticleSystem Null Emitter Access
-- **File:** `src/game/ParticleSystem.ts` ~line 250
-- **Issue:** `getEmitter(emitterId)` could return undefined, but `.x` and `.y` are accessed without null check.
-- **Fix:** Add undefined check after getEmitter call.
+### 2.7 ParticleSystem Null Emitter Access -- ALREADY SAFE
+- Existing code already has `if (emitter) { ... }` guard on line 251.
 
-### 2.8 HexActionMenu Non-Null Assertion
-- **File:** `src/components/UI/HexActionMenu.tsx` ~line 97-98
-- **Issue:** `currentPlayerStats!.actionPoints` assumes stats exist without verification.
-- **Fix:** Add proper null check.
+### 2.8 HexActionMenu Non-Null Assertion -- FIXED
+- Replaced `currentPlayerStats!.actionPoints` with `currentPlayerStats?.actionPoints ?? 0`.
 
-### 2.9 Environment Variable Parsing (gameData.ts)
-- **File:** `src/data/gameData.ts` ~line 261-262
-- **Issue:** `parseInt(import.meta.env.VITE_REQUIRED_TEAMS)` returns NaN if env var is missing or invalid, causing silent downstream failures.
-- **Fix:** Add fallback defaults: `parseInt(...) || defaultValue`.
+### 2.9 Environment Variable Parsing (gameData.ts) -- FIXED
+- Simplified to `parseInt(...) || defaultValue` pattern, returning 10 and 3 as defaults for NaN.
 
-### 2.10 GameCanvas Missing Error Handling
-- **File:** `src/components/GameCanvas.tsx` ~line 53
-- **Issue:** `new Phaser.Game(config)` can throw but is not wrapped in try-catch.
-- **Fix:** Add try-catch around Phaser.Game initialization.
+### 2.10 GameCanvas Missing Error Handling -- FIXED
+- Wrapped `new Phaser.Game(config)` in try-catch with early return on failure.
+
+### 2.11 .ts Import Extensions (bonus) -- FIXED
+- Removed `.ts` extensions from all import paths across 7 files: `gameSlice.ts`, `ActivityLog.tsx`, `HarvestGrid.tsx`, `HexActionMenu.tsx`, `buildingsData.ts`, `gameData.ts`, `harvestData.ts`, `utils.ts`.
 
 ---
 

@@ -22,7 +22,7 @@ import {
   Sparkles,
   Lock
 } from 'lucide-react';
-import {isCraftable} from "../../utils/utils.ts";
+import {isCraftable} from "../../utils/utils";
 import { X } from 'lucide-react';
 
 type TabType = 'resources' | 'items' | 'crafting';

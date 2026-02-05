@@ -1,7 +1,7 @@
 import { Coins } from "lucide-react";
 import {ResourceAmount, resourceData} from "../data/gameData";
 import { BuildingData } from "../data/buildingsData";
-import {ItemData} from "../data/harvestData.ts";
+import {ItemData} from "../data/harvestData";
 
 export function getResourceIcon(resourceType: string) {
   return resourceData[resourceType as keyof typeof resourceData]?.icon || Coins;

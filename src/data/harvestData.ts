@@ -1,5 +1,5 @@
 import { TerrainType } from './gameData';
-import {isCraftable} from "../utils/utils.ts";
+import {isCraftable} from "../utils/utils";
 
 // Resource definitions
 export interface ResourceData {
