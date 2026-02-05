@@ -35,122 +35,42 @@ export interface DisasterAnimationConfig extends AnimationConfig {
   affectedTiles: CubeCoords[];
 }
 
-interface PooledGraphics extends Phaser.GameObjects.Graphics {
-  isPooled?: boolean;
-}
-
-interface PooledText extends Phaser.GameObjects.Text {
-  isPooled?: boolean;
-}
-
 export class GameAnimationSystem {
   private scene: Phaser.Scene;
   private hexSize: number;
-  private graphicsPool: PooledGraphics[] = [];
-  private textPool: PooledText[] = [];
   private activeAnimations: Set<Phaser.Tweens.Tween> = new Set();
+  private activeGameObjects: Set<Phaser.GameObjects.GameObject> = new Set();
   private particleEmitterManager: ParticleEmitterManager;
   private performanceMode: boolean = false;
 
-  constructor(scene: Phaser.Scene, hexSize: number) {
+  constructor(scene: Phaser.Scene, hexSize: number, sharedEmitterManager?: ParticleEmitterManager) {
     this.scene = scene;
     this.hexSize = hexSize;
-    this.particleEmitterManager = new ParticleEmitterManager(scene);
-    // Textures are now managed by TextureFactory, initialized in GameEngine
-    this.initializeObjectPools();
+    this.particleEmitterManager = sharedEmitterManager ?? new ParticleEmitterManager(scene);
   }
 
-  private initializeObjectPools() {
-    // Pre-create graphics objects for pooling
-    // for (let i = 0; i < 10; i++) {
-    //   const graphics = this.scene.add.graphics() as PooledGraphics;
-    //   graphics.setActive(false);
-    //   graphics.setVisible(false);
-    //   graphics.isPooled = true;
-    //   this.graphicsPool.push(graphics);
-    // }
-    // Pre-create text objects for pooling
-    // for (let i = 0; i < 10; i++) {
-    //   const text = this.scene.add.text(0, 0, '', {
-    //     fontSize: '16px',
-    //     color: '#ffffff'
-    //   }) as PooledText;
-    //   text.setActive(false);
-    //   text.setVisible(false);
-    //   text.isPooled = true;
-    //   this.textPool.push(text);
-    // }
-  }
-
-  private getPooledGraphics(): PooledGraphics {
-    let graphics = this.graphicsPool.pop();
-
-    if (!graphics) {
-      graphics = this.scene.add.graphics() as PooledGraphics;
-      graphics.isPooled = true;
-    }
-
-    graphics.setActive(true);
-    graphics.setVisible(true);
-    graphics.clear();
-
-    // Force recreation of the graphics context
-    if (graphics.displayList === null || graphics.displayList === undefined) {
-      // If the display list is null, the graphics object needs to be re-added to the scene
-      this.scene.add.existing(graphics);
-    }
-
+  private createGraphics(): Phaser.GameObjects.Graphics {
+    const graphics = this.scene.add.graphics();
+    this.activeGameObjects.add(graphics);
     return graphics;
   }
 
-  private returnGraphicsToPool(graphics: PooledGraphics) {
-    // if (graphics.isPooled) {
-    //   graphics.setActive(false);
-    //   graphics.setVisible(false);
-    //   graphics.clear();
-    //   this.graphicsPool.push(graphics);
-    // } else {
-    //   graphics.destroy();
-    // }
+  private destroyGraphics(graphics: Phaser.GameObjects.Graphics) {
+    this.activeGameObjects.delete(graphics);
     graphics.destroy();
   }
 
-  private getPooledText(): PooledText {
-    let text = this.textPool.pop();
-
-    if (!text) {
-      text = this.scene.add.text(0, 0, "", {
-        fontSize: "16px",
-        color: "#ffffff",
-      }) as PooledText;
-      text.isPooled = true;
-    }
-
-    text.setActive(true);
-    text.setVisible(true);
-    text.setText("");
-
-    // Force recreation of the text context
-    if (text.displayList === null || text.displayList === undefined) {
-      // If the display list is null, the text object needs to be re-added to the scene
-      this.scene.add.existing(text);
-    }
-
-    // Force Phaser to reinitialize the text object
-    text.updateText();
-
+  private createText(): Phaser.GameObjects.Text {
+    const text = this.scene.add.text(0, 0, "", {
+      fontSize: "16px",
+      color: "#ffffff",
+    });
+    this.activeGameObjects.add(text);
     return text;
   }
 
-  private returnTextToPool(text: PooledText) {
-    // if (text.isPooled) {
-    //   text.setActive(false);
-    //   text.setVisible(false);
-    //   text.setText('');
-    //   this.textPool.push(text);
-    // } else {
-    //   text.destroy();
-    // }
+  private destroyText(text: Phaser.GameObjects.Text) {
+    this.activeGameObjects.delete(text);
     text.destroy();
   }
 
@@ -191,7 +111,7 @@ export class GameAnimationSystem {
   ): Promise<void> {
     return new Promise((resolve) => {
       // Get pooled graphics object
-      const glowRing = this.getPooledGraphics();
+      const glowRing = this.createGraphics();
       glowRing.setPosition(position.x, position.y);
 
       // Animate glow expansion
@@ -213,7 +133,7 @@ export class GameAnimationSystem {
           glowRing.strokeCircle(0, 0, radius * 0.8);
         },
         onComplete: () => {
-          this.returnGraphicsToPool(glowRing);
+          this.destroyGraphics(glowRing);
           this.activeAnimations.delete(tween);
           resolve();
         },
@@ -273,7 +193,7 @@ export class GameAnimationSystem {
       });
 
       // Add floating resource icon using pooled text
-      const resourceIcon = this.getPooledText();
+      const resourceIcon = this.createText();
       resourceIcon.setText(resourceInfo.emoji);
       resourceIcon.setStyle({
         fontSize: "24px",
@@ -292,7 +212,7 @@ export class GameAnimationSystem {
         duration: duration,
         ease: "Power2",
         onComplete: () => {
-          this.returnTextToPool(resourceIcon);
+          this.destroyText(resourceIcon);
           this.particleEmitterManager.destroyEmitter(emitterId);
           this.activeAnimations.delete(iconTween);
           resolve();
@@ -313,7 +233,7 @@ export class GameAnimationSystem {
       // For now, we'll create a floating text effect
       const hudPosition = { x: 100, y: 50 }; // Approximate HUD position
 
-      const floatingText = this.getPooledText();
+      const floatingText = this.createText();
       floatingText.setText(`+${amount}`);
       floatingText.setStyle({
         fontSize: "20px",
@@ -332,7 +252,7 @@ export class GameAnimationSystem {
         duration: duration,
         ease: "Power2",
         onComplete: () => {
-          this.returnTextToPool(floatingText);
+          this.destroyText(floatingText);
           this.activeAnimations.delete(textTween);
           resolve();
         },
@@ -370,7 +290,7 @@ export class GameAnimationSystem {
     duration: number
   ): Promise<void> {
     return new Promise((resolve) => {
-      const pulseOutline = this.getPooledGraphics();
+      const pulseOutline = this.createGraphics();
       pulseOutline.setPosition(position.x, position.y);
 
       const pulseTween = this.scene.tweens.add({
@@ -398,7 +318,7 @@ export class GameAnimationSystem {
           pulseOutline.strokePath();
         },
         onComplete: () => {
-          this.returnGraphicsToPool(pulseOutline);
+          this.destroyGraphics(pulseOutline);
           this.activeAnimations.delete(pulseTween);
           resolve();
         },
@@ -487,7 +407,7 @@ export class GameAnimationSystem {
     duration: number
   ): Promise<void> {
     return new Promise((resolve) => {
-      const levelText = this.getPooledText();
+      const levelText = this.createText();
       levelText.setText(`+Level ${level}`);
       levelText.setStyle({
         fontSize: "16px",
@@ -508,7 +428,7 @@ export class GameAnimationSystem {
         duration: duration,
         ease: "Power2",
         onComplete: () => {
-          this.returnTextToPool(levelText);
+          this.destroyText(levelText);
           this.activeAnimations.delete(textTween);
           resolve();
         },
@@ -540,7 +460,7 @@ export class GameAnimationSystem {
   ): Promise<void> {
     return new Promise((resolve) => {
       // Create fog overlay using pooled graphics
-      const fogOverlay = this.getPooledGraphics();
+      const fogOverlay = this.createGraphics();
       fogOverlay.setPosition(position.x, position.y);
       fogOverlay.setDepth(1305);
 
@@ -565,7 +485,7 @@ export class GameAnimationSystem {
           }
         },
         onComplete: () => {
-          this.returnGraphicsToPool(fogOverlay);
+          this.destroyGraphics(fogOverlay);
           this.activeAnimations.delete(dissolveTween);
           resolve();
         },
@@ -595,9 +515,9 @@ export class GameAnimationSystem {
         ray.setAlpha(0);
         ray.setScale(0.5, 1);
         rays.push(ray);
+        this.activeGameObjects.add(ray);
       }
 
-      // Animate rays
       const rayTween = this.scene.tweens.add({
         targets: rays,
         alpha: { from: 0, to: 0.6 },
@@ -606,7 +526,10 @@ export class GameAnimationSystem {
         ease: "Power2",
         yoyo: true,
         onComplete: () => {
-          rays.forEach((ray) => ray.destroy());
+          rays.forEach((ray) => {
+            this.activeGameObjects.delete(ray);
+            ray.destroy();
+          });
           this.activeAnimations.delete(rayTween);
           resolve();
         },
@@ -625,31 +548,23 @@ export class GameAnimationSystem {
     });
     this.activeAnimations.clear();
 
-    // Destroy all particle emitters through manager
+    this.activeGameObjects.forEach((obj) => obj.destroy());
+    this.activeGameObjects.clear();
+
     this.particleEmitterManager.destroyAll();
   }
 
   public setPerformanceMode(enabled: boolean): void {
     this.performanceMode = enabled;
     this.particleEmitterManager.setPerformanceMode(enabled);
-
-    if (enabled) {
-      // Reduce animation complexity for mobile/low-end devices
-      console.log("Animation system: Performance mode enabled");
-    } else {
-      console.log("Animation system: Full quality mode enabled");
-    }
   }
 
   public getActiveAnimationCount(): number {
     return this.activeAnimations.size;
   }
 
-  public getPoolStats(): { graphics: number; text: number } {
-    return {
-      graphics: this.graphicsPool.length,
-      text: this.textPool.length,
-    };
+  public getActiveObjectCount(): number {
+    return this.activeGameObjects.size;
   }
 
   // 4. Disaster Animation
@@ -687,8 +602,8 @@ export class GameAnimationSystem {
           const sprite = this.scene.add.sprite(pixel.x, pixel.y, textureKey);
           sprite.setDepth(1500);
           sprite.setAlpha(0.8);
+          this.activeGameObjects.add(sprite);
 
-          // Animate the disaster effect
           const tween = this.scene.tweens.add({
             targets: sprite,
             alpha: { from: 0.8, to: 0 },
@@ -696,6 +611,7 @@ export class GameAnimationSystem {
             duration: 2000,
             ease: "Power2",
             onComplete: () => {
+              this.activeGameObjects.delete(sprite);
               sprite.destroy();
               this.activeAnimations.delete(tween);
               tileResolve();
@@ -715,15 +631,5 @@ export class GameAnimationSystem {
 
   public destroy(): void {
     this.cancelAllAnimations();
-
-    // Destroy particle emitter manager
-    this.particleEmitterManager.destroy();
-
-    // Destroy all pooled objects
-    this.graphicsPool.forEach((graphics) => graphics.destroy());
-    this.graphicsPool = [];
-
-    this.textPool.forEach((text) => text.destroy());
-    this.textPool = [];
   }
 }

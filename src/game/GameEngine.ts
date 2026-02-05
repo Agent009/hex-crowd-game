@@ -15,21 +15,26 @@ import { disasterData } from "../data/gameData";
 import { AtmosphericParticleSystem } from "./ParticleSystem";
 import { GameAnimationSystem } from "./AnimationSystem";
 import { TextureFactory } from "./TextureFactory";
+import { ParticleEmitterManager } from "./ParticleEmitterManager";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private tileTerrainIcons: Map<string, Phaser.GameObjects.Text> = new Map();
   private playerNumbers: Map<string, Phaser.GameObjects.Text> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private sharedEmitterManager!: ParticleEmitterManager;
   private particleSystem!: AtmosphericParticleSystem;
   private animationSystem!: GameAnimationSystem;
   private hexSize = DEFAULT_HEX_SIZE;
   private gameData: { [key: string]: HexTile } = {};
+  private previousGameData: { [key: string]: HexTile } = {};
   private selectedTile: CubeCoords | null = null;
   private onTileClick?: (coords: CubeCoords) => void;
   private onTileHover?: (coords: CubeCoords | null) => void;
   private showPlayerNumbers: boolean = true;
   private isInitialized: boolean = false;
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | undefined;
+  private gridNeedsRedraw: boolean = true;
 
   constructor() {
     super({ key: "GameScene" });
@@ -81,13 +86,13 @@ export class GameScene extends Phaser.Scene {
     // Initialize all textures first (must be before particle/animation systems)
     TextureFactory.initialize(this);
 
-    // Initialize particle system
-    this.particleSystem = new AtmosphericParticleSystem(this, this.hexSize);
-
-    // Initialize animation system
-    this.animationSystem = new GameAnimationSystem(this, this.hexSize);
+    this.sharedEmitterManager = new ParticleEmitterManager(this);
+    this.particleSystem = new AtmosphericParticleSystem(this, this.hexSize, this.sharedEmitterManager);
+    this.animationSystem = new GameAnimationSystem(this, this.hexSize, this.sharedEmitterManager);
 
     this.cursors = this.input.keyboard?.createCursorKeys();
+
+    this.events.on("shutdown", this.cleanup, this);
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -123,52 +128,99 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private renderWorld() {
-    console.log(
-      "GameScene > renderWorld() > rendering world with",
-      Object.keys(this.gameData).length,
-      "tiles"
-    );
-    this.clearTiles();
+  private renderWorld(fullRedraw: boolean = true) {
+    if (fullRedraw) {
+      this.clearTiles();
+      Object.keys(this.gameData).forEach((key) => {
+        this.renderTile(this.gameData[key]);
+      });
+      this.gridNeedsRedraw = true;
+    } else {
+      const dirtyKeys = this.getDirtyTileKeys();
+      dirtyKeys.forEach((key) => {
+        const tile = this.gameData[key];
+        if (tile) {
+          this.destroyTileObjects(key);
+          this.renderTile(tile);
+        } else {
+          this.destroyTileObjects(key);
+        }
+      });
+    }
 
-    Object.keys(this.gameData).forEach((key) => {
-      const tile = this.gameData[key];
-      this.renderTile(tile);
-    });
+    this.previousGameData = { ...this.gameData };
 
-    this.renderGrid();
+    if (this.gridNeedsRedraw) {
+      this.renderGrid();
+      this.gridNeedsRedraw = false;
+    }
     this.updateAtmosphericEffects();
-    console.log("World rendering complete");
+  }
+
+  private getDirtyTileKeys(): Set<string> {
+    const dirty = new Set<string>();
+    const allKeys = new Set([
+      ...Object.keys(this.gameData),
+      ...Object.keys(this.previousGameData),
+    ]);
+
+    for (const key of allKeys) {
+      const curr = this.gameData[key];
+      const prev = this.previousGameData[key];
+
+      if (!curr || !prev) {
+        dirty.add(key);
+        continue;
+      }
+
+      if (
+        curr.terrain !== prev.terrain ||
+        curr.isActive !== prev.isActive ||
+        curr.fogLevel !== prev.fogLevel ||
+        (curr.players?.length ?? 0) !== (prev.players?.length ?? 0) ||
+        curr.players !== prev.players
+      ) {
+        dirty.add(key);
+      }
+    }
+    return dirty;
+  }
+
+  private destroyTileObjects(key: string) {
+    const tileGraphic = this.tiles.get(key);
+    if (tileGraphic) {
+      tileGraphic.destroy();
+      this.tiles.delete(key);
+    }
+
+    const terrainIcon = this.tileTerrainIcons.get(key);
+    if (terrainIcon) {
+      terrainIcon.destroy();
+      this.tileTerrainIcons.delete(key);
+    }
+
+    const keysToRemove: string[] = [];
+    this.playerNumbers.forEach((text, pKey) => {
+      if (pKey.startsWith(`${key}_`)) {
+        text.destroy();
+        keysToRemove.push(pKey);
+      }
+    });
+    keysToRemove.forEach((k) => this.playerNumbers.delete(k));
   }
 
   private renderTile(tile: HexTile) {
     const key = coordsToKey(tile.coords);
     const pixel = cubeToPixel(tile.coords, this.hexSize);
 
-    // Remove existing tile graphics if they exist
-    const existingTile = this.tiles.get(key);
-    if (existingTile) {
-      existingTile.destroy();
-    }
-
-    // Remove existing player number if it exists
-    const existingNumber = this.playerNumbers.get(key);
-    if (existingNumber) {
-      existingNumber.destroy();
-      this.playerNumbers.delete(key);
-    }
-
-    // Create hex graphics
     const graphics = this.add.graphics();
     graphics.setPosition(pixel.x, pixel.y);
 
     this._redrawTileGraphics(graphics, tile, false, false);
 
-    // Add terrain icon only if tile is active (not depleted)
     if (tile.isActive !== false) {
       const terrain = terrainData[tile.terrain];
       if (terrain?.icon) {
-        // For now, we'll use text representations of terrain
         let terrainSymbol = "";
         switch (tile.terrain) {
           case "lake":
@@ -192,18 +244,17 @@ export class GameScene extends Phaser.Scene {
         }
 
         if (terrainSymbol) {
-          this.add
+          const iconText = this.add
             .text(pixel.x, pixel.y, terrainSymbol, {
               fontSize: "16px",
               align: "center",
             })
             .setOrigin(0.5)
             .setDepth(1000);
+          this.tileTerrainIcons.set(key, iconText);
         }
       }
     }
-
-    // No longer showing X for inactive tiles - just remove the icon entirely
 
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
@@ -437,7 +488,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderGrid() {
-    console.log("GameScene > renderGrid()");
     if (!this.gridGraphics) {
       return;
     }
@@ -499,19 +549,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearTiles() {
-    // Destroy all existing tile graphics
     this.tiles.forEach((tile) => tile.destroy());
     this.tiles.clear();
 
-    // Destroy all player numbers
+    this.tileTerrainIcons.forEach((icon) => icon.destroy());
+    this.tileTerrainIcons.clear();
+
     this.playerNumbers.forEach((text) => text.destroy());
     this.playerNumbers.clear();
-
-    // Clear all text objects that might be left over
-    const textObjects = this.children.list.filter(
-      (child) => child.type === "Text"
-    );
-    textObjects.forEach((obj) => obj.destroy());
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
@@ -550,13 +595,10 @@ export class GameScene extends Phaser.Scene {
     this.particleSystem.setZoomLevel(newZoom);
   }
 
-  // Public methods for external control
   public updateTiles(tiles: { [key: string]: HexTile }) {
-    console.log("Updating tiles in scene:", Object.keys(tiles).length);
     this.gameData = tiles;
     if (this.isInitialized) {
-      // Force a complete re-render to ensure hero icons are properly updated
-      this.renderWorld();
+      this.renderWorld(false);
     }
   }
 
@@ -633,28 +675,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   cleanup() {
-    // Clean up particle system
+    if (!this.isInitialized) return;
+
     if (this.particleSystem) {
       this.particleSystem.destroy();
     }
 
-    // Clean up animation system
     if (this.animationSystem) {
       this.animationSystem.destroy();
     }
 
-    // Clear all graphics and game objects
+    if (this.sharedEmitterManager) {
+      this.sharedEmitterManager.destroy();
+    }
+
     this.clearTiles();
     if (this.gridGraphics) {
       this.gridGraphics.destroy();
     }
 
-    // Remove event listeners
     this.input.off("pointermove", this.handlePointerMove, this);
     this.input.off("pointerdown", this.handlePointerDown, this);
     this.input.off("wheel", this.handleWheel, this);
+    this.events.off("shutdown", this.cleanup, this);
 
-    // Reset state
     this.isInitialized = false;
   }
 

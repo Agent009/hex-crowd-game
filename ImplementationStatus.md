@@ -77,40 +77,26 @@ All null safety and runtime error issues have been fixed.
 
 ## Phase 3: Memory Leaks & Performance
 
-### 3.1 Full World Re-Render on Every Call (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 140-145
-- **Issue:** `renderWorld()` destroys and recreates ALL tile graphics objects every time it is called. No dirty-checking or incremental updates.
-- **Fix:** Implement dirty flag system. Only re-render tiles that have changed since last render.
+### 3.1 Full World Re-Render on Every Call (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Added `previousGameData` snapshot and `getDirtyTileKeys()` diff. `renderWorld(false)` now only redraws changed tiles. Full redraw only on initialization or when `gridNeedsRedraw` flag is set. Added `tileTerrainIcons` map for proper icon lifecycle tracking.
 
-### 3.2 Event Listener Cleanup (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~lines 73-75
-- **Issue:** Input event listeners registered in `create()` are cleaned up in `cleanup()` but not in the scene's built-in `shutdown`/`destroy` events. If scene is destroyed without explicit cleanup call, listeners leak.
-- **Fix:** Register cleanup on scene `shutdown` event as well.
+### 3.2 Event Listener Cleanup (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Added `this.events.on("shutdown", this.cleanup, this)` in `create()`. Cleanup now deregisters this listener as well.
 
-### 3.3 Disabled Object Pooling (AnimationSystem.ts)
-- **File:** `src/game/AnimationSystem.ts` ~lines 63-82, 106-114, 145-154
-- **Issue:** Object pool initialization and return logic is completely commented out. Graphics/Text objects are created and destroyed on every animation, causing GC pressure.
-- **Fix:** Either re-enable and fix the pooling system, or remove the dead code entirely. If pooling is not needed, clean up the interfaces and unused code.
+### 3.3 Disabled Object Pooling (AnimationSystem.ts) - RESOLVED
+- **Fix Applied:** Removed dead `PooledGraphics`/`PooledText` interfaces, pool arrays, and pool init/get/return methods. Replaced with simple `createGraphics()`/`destroyGraphics()`/`createText()`/`destroyText()` methods that track objects in an `activeGameObjects` Set. Removed stale console.logs from `setPerformanceMode()`.
 
-### 3.4 Quadruple Tile Iteration on Clear (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~lines 509-520
-- **Issue:** Clearing tiles iterates the tile map twice (forEach on Maps) plus filters children.list. Inefficient for large maps.
-- **Fix:** Consolidate into a single pass that clears all tile-related objects.
+### 3.4 Quadruple Tile Iteration on Clear (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Consolidated `clearTiles()` to destroy graphics, terrain icons, and player numbers from their respective Maps in a single pass. Removed orphan scan of `children.list`.
 
-### 3.5 Sort on Every Render (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 455-461
-- **Issue:** Sorts all tiles by depth every render call using a custom comparator. Expensive for large tile counts.
-- **Fix:** Only sort when tiles change, or maintain sorted order during insertion.
+### 3.5 Sort on Every Render (GameEngine.ts) - RESOLVED
+- **Fix Applied:** With dirty-tracking in 3.1, the grid only redraws on the `gridNeedsRedraw` flag, so the sort no longer runs on every `updateTiles()` call.
 
-### 3.6 Duplicate ParticleEmitterManager Instances
-- **File:** `src/game/AnimationSystem.ts` ~line 58, vs `src/game/GameEngine.ts` ~line 84
-- **Issue:** AnimationSystem creates its own ParticleEmitterManager instead of reusing the scene's instance. Redundant tracking and potential conflicts.
-- **Fix:** Pass a shared ParticleEmitterManager instance to AnimationSystem.
+### 3.6 Duplicate ParticleEmitterManager Instances - RESOLVED
+- **Fix Applied:** GameEngine now creates a single shared `ParticleEmitterManager` and passes it to both `AtmosphericParticleSystem` and `GameAnimationSystem` via constructor injection. GameEngine owns the manager lifecycle and destroys it during cleanup.
 
-### 3.7 Orphaned Ray Sprites on Animation Cancel
-- **File:** `src/game/AnimationSystem.ts` ~line 609, 621-626
-- **Issue:** `cancelAllAnimations()` stops tweens but does not destroy associated game objects (Graphics, Text, Image sprites), leading to orphaned objects.
-- **Fix:** Track all animation-created objects alongside tweens, destroy them during cancellation.
+### 3.7 Orphaned Ray Sprites on Animation Cancel - RESOLVED
+- **Fix Applied:** Light ray images and disaster sprites are now tracked in `activeGameObjects`. `cancelAllAnimations()` destroys all tracked game objects along with stopping tweens, preventing orphaned sprites.
 
 ---
 

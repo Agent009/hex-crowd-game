@@ -25,11 +25,10 @@ export class AtmosphericParticleSystem {
   private hexSize: number;
   private performanceMode: boolean = false;
 
-  constructor(scene: Phaser.Scene, hexSize: number) {
+  constructor(scene: Phaser.Scene, hexSize: number, sharedEmitterManager?: ParticleEmitterManager) {
     this.scene = scene;
     this.hexSize = hexSize;
-    this.particleEmitterManager = new ParticleEmitterManager(scene);
-    // Textures are now managed by TextureFactory, initialized in GameEngine
+    this.particleEmitterManager = sharedEmitterManager ?? new ParticleEmitterManager(scene);
   }
 
   public createFogEffect(
