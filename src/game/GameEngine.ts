@@ -93,6 +93,7 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard?.createCursorKeys();
 
     this.events.on("shutdown", this.cleanup, this);
+    console.log("GameScene setup complete");
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -119,6 +120,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    // console.log("GameScene > update()");
     if (this.cursors) {
       const speed = 5;
       if (this.cursors.left?.isDown) this.cameras.main.scrollX -= speed;
