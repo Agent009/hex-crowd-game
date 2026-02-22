@@ -8,10 +8,9 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ## Phase C: Dead Code Removal
 
-### C1 — GameHUD.tsx Dead Code — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** `GameHUD.tsx` references state and actions that don't exist. Active HUD is `PartyGameHUD.tsx`. Needs decision: remove entirely or rewrite for current game state.
+### C1 — GameHUD.tsx Dead Code — COMPLETE
+- **Status:** Done
+- **Notes:** `GameHUD.tsx` deleted. Was never imported in `Game.tsx` — `PartyGameHUD.tsx` is the sole active HUD.
 
 ---
 
@@ -164,13 +163,13 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 | Phase | Total Items | OPEN | IN PROGRESS | COMPLETE |
 |-------|------------|------|-------------|---------|
-| C — Dead Code | 1 | 1 | 0 | 0 |
+| C — Dead Code | 1 | 0 | 0 | 1 |
 | M — Game Mechanics | 4 | 4 | 0 | 0 |
 | I — Item System | 7 | 7 | 0 | 0 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
 | P — Infrastructure | 3 | 3 | 0 | 0 |
-| **TOTAL** | **26** | **26** | **0** | **0** |
+| **TOTAL** | **26** | **25** | **0** | **1** |
 
 ---
 
