@@ -102,65 +102,41 @@ All null safety and runtime error issues have been fixed.
 
 ## Phase 4: Logic Errors & Broken Features
 
-### 4.1 Keyboard Camera Movement Unimplemented (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~lines 90-93
-- **Issue:** Comment says "Handle camera movement in update loop" but the block is empty. Cursor keys are created but never used for movement.
-- **Fix:** Implement camera panning using the created cursor keys, or remove the dead code if camera control is mouse-only.
+### 4.1 Keyboard Camera Movement Unimplemented (GameEngine.ts) - RESOLVED
+- **Note:** Was already implemented in Phase 1 fixes. `update()` correctly moves camera on arrow key input using `this.cursors`.
 
-### 4.2 Preload Method Completely Stubbed (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~lines 37-54
-- **Issue:** Entire `preload()` method has 15 commented-out asset loading calls. Game loads no textures from disk.
-- **Fix:** Either load the required assets or remove commented lines and rely solely on procedural texture generation.
+### 4.2 Preload Method Completely Stubbed (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Removed all 13 commented-out `this.load.image()` calls and the `console.log`. Game relies solely on procedural texture generation via `TextureFactory`. Empty `preload()` retained as Phaser lifecycle stub.
 
-### 4.3 Empty updateAtmosphericEffects Method (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 504-505
-- **Issue:** `updateAtmosphericEffects()` is called but the method body is empty.
-- **Fix:** Implement or remove the call.
+### 4.3 Empty updateAtmosphericEffects Method (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Removed both the call site in `renderWorld()` and the empty method body entirely.
 
-### 4.4 Hardcoded HeroPanel Stats (HeroPanel.tsx)
-- **File:** `src/components/UI/HeroPanel.tsx` ~lines 83-98
-- **Issue:** Stats (Attack: 8, Defense: 6, etc.) are hardcoded literals, never reflecting actual hero data.
-- **Fix:** Wire up to actual hero stat data from the game state.
+### 4.4 Hardcoded HeroPanel Stats (HeroPanel.tsx) - DEFERRED
+- **Note:** Hero system is currently inactive. Deferred until hero feature is implemented.
 
-### 4.5 Unimplemented Hero Buttons (HeroPanel.tsx)
-- **File:** `src/components/UI/HeroPanel.tsx` ~lines 122-126, 140-145
-- **Issue:** "View Army", "Skills", "Cast Spell", and "Rest" buttons have no onClick handlers.
-- **Fix:** Either implement handlers or disable/hide buttons until feature is ready.
+### 4.5 Unimplemented Hero Buttons (HeroPanel.tsx) - DEFERRED
+- **Note:** Hero system is currently inactive. Deferred until hero feature is implemented.
 
-### 4.6 Commented-Out Tile Selection (HexActionMenu.tsx)
-- **File:** `src/components/UI/HexActionMenu.tsx` ~lines 81, 92
-- **Issue:** Dispatch calls for selecting/deselecting tiles are commented out, breaking expected UX behavior.
-- **Fix:** Uncomment and verify the dispatch calls, or implement alternative selection logic.
+### 4.6 Commented-Out Tile Selection (HexActionMenu.tsx) - RESOLVED
+- **Fix Applied:** Added `deselectTile` reducer to gameSlice (sets `selectedTile = null`). Replaced the two commented-out `dispatch(selectTile(null))` calls with `dispatch(deselectTile())`. Action menu now correctly dismisses after a move or non-persistent action.
 
-### 4.7 Nearest City Not Actually Calculated (BuildingPanel.tsx)
-- **File:** `src/components/UI/BuildingPanel.tsx` ~line 26
-- **Issue:** Always uses `cities[0]` regardless of player position. Should calculate actual nearest city by distance.
-- **Fix:** Implement distance calculation to find the actual nearest city.
+### 4.7 Nearest City Not Actually Calculated (BuildingPanel.tsx) - DEFERRED
+- **Note:** BuildingPanel.tsx was removed (legacy file). City feature deferred.
 
-### 4.8 Inconsistent Activity Event Limits (gameSlice.ts)
-- **File:** `src/store/gameSlice.ts` ~lines 438, 948, 1020
-- **Issue:** Activity events array is trimmed to different limits in different reducers (100, 50, 50). This creates inconsistent history lengths.
-- **Fix:** Use a single constant for the max event limit.
+### 4.8 Inconsistent Activity Event Limits (gameSlice.ts) - RESOLVED
+- **Fix Applied:** Added `MAX_ACTIVITY_EVENTS = 100` constant at the top of gameSlice. Replaced all three inconsistent `slice(0, 50/100)` calls with the constant.
 
-### 4.9 Item Special Effects Not Enforced (harvestData.ts)
-- **File:** `src/data/harvestData.ts` ~lines 122-212
-- **Issue:** Items define special effects in their descriptions (boat "destroys on storm", climbing gear "player cannot leave mountain") but no game logic enforces these mechanics.
-- **Fix:** Implement enforcement logic for each special item effect, or mark effects as "planned" in the data.
+### 4.9 Item Special Effects Not Enforced (harvestData.ts) - DEFERRED
+- **Note:** Item special effect enforcement (boat storm destruction, climbing gear terrain lock) requires substantial game loop integration. Deferred as a planned feature.
 
-### 4.10 Item Quantity Limits Not Enforced (harvestData.ts)
-- **File:** `src/data/harvestData.ts` ~line 381
-- **Issue:** Each item has a `quantity` field ("Total available in game") but this limit is never checked during harvesting/crafting.
-- **Fix:** Track global item counts and enforce quantity limits.
+### 4.10 Item Quantity Limits Not Enforced (harvestData.ts) - DEFERRED
+- **Note:** Global item quantity tracking requires server-side or shared state. Deferred as a planned feature.
 
-### 4.11 RoundPhaseOverlay Variable Scope Issues
-- **File:** `src/components/UI/RoundPhaseOverlay.tsx` ~lines 232-293
-- **Issue:** Variables declared inside case blocks without proper block scoping could cause ReferenceErrors or cross-case leakage.
-- **Fix:** Wrap each case in explicit block scope `{ }` and ensure variables are properly contained.
+### 4.11 RoundPhaseOverlay Variable Scope Issues - RESOLVED
+- **Note:** Switch case blocks are already wrapped in explicit `{ }` block scopes. Removed the stale commented-out `console.log` from `phaseProgress` calculation.
 
-### 4.12 Invalid Tailwind Class (BoltLogo.tsx)
-- **File:** `src/components/UI/BoltLogo.tsx` ~line 10
-- **Issue:** `hover:scale-205` is not a valid Tailwind class. No hover effect is applied.
-- **Fix:** Use `hover:scale-110` or add custom scale value to Tailwind config.
+### 4.12 Invalid Tailwind Class (BoltLogo.tsx) - RESOLVED
+- **Fix Applied:** Changed `hover:scale-205` (invalid) to `hover:scale-110` and `active:scale-200` to `active:scale-95`.
 
 ---
 

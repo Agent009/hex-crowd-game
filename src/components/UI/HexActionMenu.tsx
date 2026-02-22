@@ -1,7 +1,7 @@
 import React from 'react';
 import {useSelector, useDispatch} from 'react-redux';
 import {RootState} from '../../store/store';
-import {movePlayer, toggleTileInfo} from '../../store/gameSlice';
+import {movePlayer, toggleTileInfo, deselectTile} from '../../store/gameSlice';
 import {cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey, areAdjacent} from '../../utils/hexGrid';
 import {terrainData} from '../../data/gameData';
 import {
@@ -77,8 +77,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
         playerId: currentPlayer.id,
         target: selectedTile
       }));
-      // Clear selection after successful move
-      // dispatch(selectTile(null));
+      dispatch(deselectTile());
     }
   };
 
@@ -87,9 +86,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       e.preventDefault();
       e.stopPropagation();
       actionFn();
-      // Clear selection after action unless we want to keep menu active
       if (!keepMenuActive) {
-        // dispatch(selectTile(null));
+        dispatch(deselectTile());
       }
     };
   };

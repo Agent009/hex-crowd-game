@@ -40,27 +40,9 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  preload() {
-    console.log("GameScene > preload()");
-
-    // Load terrain textures
-    // this.load.image('dirt_01', 'src/assets/textures/dirt_01.png');
-    // this.load.image('fire_01', 'src/assets/textures/fire_01.png');
-    // this.load.image('flame_01', 'src/assets/textures/flame_01.png');
-    // this.load.image('flare_01', 'src/assets/textures/flare_01.png');
-    // this.load.image('light_01', 'src/assets/textures/light_01.png');
-    // this.load.image('magic_05', 'src/assets/textures/magic_05.png');
-    // this.load.image('scorch_01', 'src/assets/textures/scorch_01.png');
-    // this.load.image('scorch_02', 'src/assets/textures/scorch_02.png');
-    // this.load.image('scorch_03', 'src/assets/textures/scorch_03.png');
-    // this.load.image('smoke_01', 'src/assets/textures/64_64/smoke_01.png');
-    // this.load.image('smoke_02', 'src/assets/textures/smoke_02.png');
-    // this.load.image('spark_01', 'src/assets/textures/spark_01.png');
-    // this.load.image('star_01', 'src/assets/textures/star_01.png');
-  }
+  preload() {}
 
   create() {
-    console.log("GameScene > create()");
 
     // Set up camera
     this.cameras.main.setZoom(1);
@@ -93,7 +75,6 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard?.createCursorKeys();
 
     this.events.on("shutdown", this.cleanup, this);
-    console.log("GameScene setup complete");
   }
 
   // Custom initialization method to avoid conflicts with Phaser's init
@@ -103,11 +84,6 @@ export class GameScene extends Phaser.Scene {
     onTileHover: (coords: CubeCoords | null) => void;
     showPlayerNumbers: boolean;
   }) {
-    console.log(
-      "GameScene > initializeScene() > initializing scene with data:",
-      Object.keys(data.tiles).length,
-      "tiles"
-    );
 
     this.gameData = data.tiles;
     this.onTileClick = data.onTileClick;
@@ -120,7 +96,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    // console.log("GameScene > update()");
     if (this.cursors) {
       const speed = 5;
       if (this.cursors.left?.isDown) this.cameras.main.scrollX -= speed;
@@ -156,7 +131,6 @@ export class GameScene extends Phaser.Scene {
       this.renderGrid();
       this.gridNeedsRedraw = false;
     }
-    this.updateAtmosphericEffects();
   }
 
   private getDirtyTileKeys(): Set<string> {
@@ -544,10 +518,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.onTileClick?.(coords);
-  }
-
-  private updateAtmosphericEffects() {
-    // Simplified for party game - no fog effects needed
   }
 
   private clearTiles() {

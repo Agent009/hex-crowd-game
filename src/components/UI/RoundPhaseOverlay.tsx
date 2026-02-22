@@ -216,7 +216,6 @@ export const RoundPhaseOverlay: React.FC = () => {
   };
 
   const phaseProgress = Math.max(0, ((phaseDuration - phaseTimer) / phaseDuration) * 100);
-  // console.log("Phase progress: ", phaseProgress, "phaseDuration", phaseDuration, "phaseTimer", phaseTimer);
 
   const getPhaseSpecificInfo = () => {
     switch (currentPhase) {

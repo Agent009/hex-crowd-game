@@ -15,6 +15,8 @@ import {
   TerrainType
 } from '../data/gameData';
 
+const MAX_ACTIVITY_EVENTS = 100;
+
 export interface GameState {
   // World state
   tiles: { [key: string]: HexTile };
@@ -435,8 +437,7 @@ const advanceToNextRound = (state: GameState) => {
     details: {}
   });
 
-  // Keep only last 100 events
-  state.activityEvents = state.activityEvents.slice(0, 100);
+  state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
 };
 
 const gameSlice = createSlice({
@@ -591,6 +592,10 @@ const gameSlice = createSlice({
     // Game mechanics
     selectTile: (state, action: PayloadAction<CubeCoords>) => {
       state.selectedTile = action.payload;
+    },
+
+    deselectTile: (state) => {
+      state.selectedTile = null;
     },
 
     movePlayer: (state, action: PayloadAction<{ playerId: string; target: CubeCoords }>) => {
@@ -948,8 +953,7 @@ const gameSlice = createSlice({
         });
       }
 
-      // Keep only last 50 events
-      state.activityEvents = state.activityEvents.slice(0, 50);
+      state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
     },
     setCurrentPlayer: (state, action: PayloadAction<{ playerId: string }>) => {
       const player = state.players.find(p => p.id === action.payload.playerId);
@@ -1020,8 +1024,7 @@ const gameSlice = createSlice({
         details: { item: itemTemplate.name }
       });
 
-      // Keep only last 50 events
-      state.activityEvents = state.activityEvents.slice(0, 50);
+      state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
     },
     // UI controls
     setCameraPosition: (state, action: PayloadAction<{ x: number; y: number }>) => {
@@ -1053,6 +1056,7 @@ export const {
   startGame,
   endGame,
   selectTile,
+  deselectTile,
   movePlayer,
   updateGameTimer,
   updatePhaseTimer,

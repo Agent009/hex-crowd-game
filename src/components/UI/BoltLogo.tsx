@@ -7,7 +7,7 @@ export const BoltLogo: React.FC = () => {
         href="https://bolt.new/"
         target="_blank"
         rel="noopener noreferrer"
-        className="block transition-transform hover:scale-205 active:scale-200"
+        className="block transition-transform hover:scale-110 active:scale-95"
         title="Powered by Bolt"
       >
         <img
