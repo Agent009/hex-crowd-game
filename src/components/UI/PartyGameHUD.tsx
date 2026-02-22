@@ -10,7 +10,7 @@ import {
   phaseOrder,
   getPhaseDisplayName
 } from '../../store/gameSlice';
-import { toggleGrid, togglePlayerNumbers, toggleTileInfo } from '../../store/uiSlice';
+import { toggleGrid, togglePlayerNumbers } from '../../store/uiSlice';
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
@@ -89,10 +89,6 @@ export const PartyGameHUD: React.FC = () => {
   const handleOpenHarvestGrid = (tab: 'resources' | 'items' | 'crafting') => {
     setHarvestGridTab(tab);
     setShowHarvestGrid(true);
-  };
-
-  const handleOpenTileInfo = () => {
-    dispatch(toggleTileInfo());
   };
 
   // Get top teams by score
@@ -351,7 +347,6 @@ export const PartyGameHUD: React.FC = () => {
       {/* Hex Action Menu */}
       <HexActionMenu
         onOpenHarvestGrid={handleOpenHarvestGrid}
-        onOpenTileInfo={handleOpenTileInfo}
       />
 
       {/* Status Effects Display */}

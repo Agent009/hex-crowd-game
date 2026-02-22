@@ -78,7 +78,7 @@ export const GameLobby: React.FC = () => {
               <Crown className="w-10 h-10 mr-3 text-yellow-400" />
               Heroes Kingdoms Party Game
               {isTestMode && (
-                <TestTube className="w-6 h-6 ml-3 text-orange-400" title="Test Mode Active" />
+                <span title="Test Mode Active"><TestTube className="w-6 h-6 ml-3 text-orange-400" /></span>
               )}
             </h1>
             <p className="text-slate-300 text-lg">

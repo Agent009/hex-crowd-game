@@ -154,9 +154,10 @@ export class ParticleEmitterManager {
     if (typeof adjusted.quantity === "number") {
       adjusted.quantity = Math.max(1, Math.floor(adjusted.quantity * 0.5));
     } else if (adjusted.quantity) {
+      const q = adjusted.quantity as Phaser.Types.GameObjects.Particles.EmitterOpRandomMinMaxConfig;
       adjusted.quantity = {
-        min: Math.max(1, Math.floor((adjusted.quantity.min ?? 1) * 0.5)),
-        max: Math.max(1, Math.floor((adjusted.quantity.max ?? 1) * 0.5)),
+        min: Math.max(1, Math.floor((q.min ?? 1) * 0.5)),
+        max: Math.max(1, Math.floor((q.max ?? 1) * 0.5)),
       };
     }
 
