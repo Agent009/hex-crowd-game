@@ -551,6 +551,32 @@ const gameSlice = createSlice({
               const effects = terrain.effects;
               let statusMessage = null;
 
+              if (effects?.hpGainPerRound && effects.hpGainPerRound.length > 0) {
+                for (const effectEntry of effects.hpGainPerRound) {
+                  for (const effectData of Object.values(effectEntry)) {
+                    if (Math.random() * 100 < effectData.chance) {
+                      const gain = Math.floor(Math.random() * (effectData.max - effectData.min + 1)) + effectData.min;
+                      const prevHp = playerStats.hp;
+                      playerStats.hp = Math.min(10, playerStats.hp + gain);
+                      const actualGain = playerStats.hp - prevHp;
+                      if (actualGain > 0) {
+                        playerStats.statusEffects.push(`+${actualGain} HP (plains)`);
+                        state.activityEvents.unshift({
+                          id: `${Date.now()}_${Math.random()}`,
+                          timestamp: Date.now(),
+                          type: 'healing',
+                          playerId: player.id,
+                          playerName: player.name,
+                          playerNumber: player.number,
+                          message: `${player.name || 'Unknown'} recovered ${actualGain} HP resting on plains`,
+                          details: { healing: actualGain, terrain: terrain.name }
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+
               if (effects?.hpLossPerRound) {
                 let takeDamage = effects.hpLossPerRound;
 
@@ -719,6 +745,84 @@ const gameSlice = createSlice({
       }
     },
 
+    useItem: (state, action: PayloadAction<{
+      playerId: string;
+      itemId: string;
+    }>) => {
+      const { playerId, itemId } = action.payload;
+      const playerStats = state.playerStats[playerId];
+      const player = state.players.find(p => p.id === playerId);
+
+      if (!player || !playerStats) return;
+      if (state.currentPhase !== 'interaction') return;
+
+      const itemIndex = playerStats.items.findIndex(item => item.id === itemId);
+      if (itemIndex === -1 || playerStats.items[itemIndex].availableUses <= 0) return;
+
+      const item = playerStats.items[itemIndex];
+
+      if (itemId === 'rejuvenate') {
+        const prevHp = playerStats.hp;
+        playerStats.hp = Math.min(10, playerStats.hp + 3);
+        const actualGain = playerStats.hp - prevHp;
+        playerStats.statusEffects.push(`+${actualGain} HP (Rejuvenate)`);
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'healing',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} used Rejuvenate and recovered ${actualGain} HP`,
+          details: { healing: actualGain, item: item.name }
+        });
+        playerStats.items.splice(itemIndex, 1);
+      } else if (itemId === 'armageddon') {
+        state.players.forEach(target => {
+          if (target.id === playerId) return;
+          const targetStats = state.playerStats[target.id];
+          if (!targetStats) return;
+          targetStats.hp = Math.max(0, targetStats.hp - 2);
+          targetStats.statusEffects.push(`-2 HP (Armageddon by ${player.name})`);
+          state.activityEvents.unshift({
+            id: `${Date.now()}_${Math.random()}`,
+            timestamp: Date.now(),
+            type: 'damage',
+            playerId: target.id,
+            playerName: target.name,
+            playerNumber: target.number,
+            message: `${target.name} took 2 damage from ${player.name}'s Armageddon`,
+            details: { damage: 2, item: item.name }
+          });
+        });
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'item_usage',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} unleashed Armageddon! All other players take 2 damage`,
+          details: { item: item.name }
+        });
+        playerStats.items.splice(itemIndex, 1);
+      } else if (itemId === 'terraform' || itemId === 'leech') {
+        playerStats.items.splice(itemIndex, 1);
+        state.activityEvents.unshift({
+          id: `${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          type: 'item_usage',
+          playerId,
+          playerName: player.name,
+          playerNumber: player.number,
+          message: `${player.name} used ${item.name}`,
+          details: { item: item.name }
+        });
+      }
+
+      state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
+    },
+
     craftItem: (state, action: PayloadAction<{ playerId: string; itemId: string }>) => {
       const { playerId, itemId } = action.payload;
       const playerStats = state.playerStats[playerId];
@@ -772,6 +876,7 @@ export const {
   setCurrentPlayer,
   harvestFromTile,
   craftItem,
+  useItem,
   updateTeamScore,
 } = gameSlice.actions;
 

@@ -49,6 +49,16 @@ const worldSlice = createSlice({
       state.selectedTile = null;
     },
 
+    activateTile: (state, action: PayloadAction<string>) => {
+      const tileKey = action.payload;
+      if (!state.activeTiles.includes(tileKey)) {
+        state.activeTiles.push(tileKey);
+      }
+      if (state.tiles[tileKey]) {
+        state.tiles[tileKey].isActive = true;
+      }
+    },
+
     deactivateTile: (state, action: PayloadAction<string>) => {
       const tileKey = action.payload;
       const idx = state.activeTiles.indexOf(tileKey);
@@ -69,5 +79,5 @@ const worldSlice = createSlice({
   },
 });
 
-export const { selectTile, deselectTile, deactivateTile, setTilePlayers } = worldSlice.actions;
+export const { selectTile, deselectTile, activateTile, deactivateTile, setTilePlayers } = worldSlice.actions;
 export default worldSlice.reducer;

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { harvestFromTile, craftItem } from '../../store/gameSlice';
+import { harvestFromTile, craftItem, useItem } from '../../store/gameSlice';
+import { useTerraformItem, useLeechItem } from '../../store/itemThunks';
 import {
   HarvestGrid as HarvestGridClass,
   ResourceData,
@@ -168,6 +169,31 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     const itemTemplate = itemDatabase.find(item => item.id === itemId);
     if (itemTemplate) {
       showFlash(`Successfully crafted ${itemTemplate.name}!`, 'success');
+    }
+  };
+
+  const USABLE_ITEMS = ['rejuvenate', 'armageddon', 'terraform', 'leech'];
+
+  const handleUseItem = (itemId: string) => {
+    if (!currentPlayer || !currentPlayerStats) {
+      showFlash('No player selected!');
+      return;
+    }
+    if (currentPhase !== 'interaction') {
+      showFlash('Can only use items during the Interaction phase!');
+      return;
+    }
+
+    if (itemId === 'terraform') {
+      dispatch(useTerraformItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      showFlash('Terraform used! 3 inactive tiles are now active.', 'success');
+    } else if (itemId === 'leech') {
+      dispatch(useLeechItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      showFlash('Leech used! 2 active tiles are now inactive.', 'success');
+    } else {
+      dispatch(useItem({ playerId: currentPlayer.id, itemId }));
+      if (itemId === 'rejuvenate') showFlash('Rejuvenate used! +3 HP.', 'success');
+      if (itemId === 'armageddon') showFlash('Armageddon unleashed! All other players take 2 damage.', 'success');
     }
   };
 
@@ -600,18 +626,35 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
                 <h4 className="text-white font-semibold mb-2 text-sm">
                   Your Items ({currentPlayerStats.items.length})
                 </h4>
-                <div className="space-y-1 max-h-20 overflow-y-auto">
-                  {currentPlayerStats.items.map((item, index) => (
-                    <div key={`${item.id}_${index}`} className="flex items-center justify-between bg-slate-700 p-2 rounded text-xs">
-                      <div className="flex items-center space-x-2">
-                        <span>{renderItemIcon(item.id)}</span>
-                        <span className="text-white">{item.name}</span>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {currentPlayerStats.items.map((item, index) => {
+                    const isUsable = USABLE_ITEMS.includes(item.id);
+                    const canUseNow = isUsable && currentPhase === 'interaction';
+                    return (
+                      <div key={`${item.id}_${index}`} className="flex items-center justify-between bg-slate-700 p-2 rounded text-xs">
+                        <div className="flex items-center space-x-2">
+                          <span>{renderItemIcon(item.id)}</span>
+                          <div>
+                            <div className="text-white font-semibold">{item.name}</div>
+                            <div className="text-slate-400">{item.availableUses} uses</div>
+                          </div>
+                        </div>
+                        {isUsable && (
+                          <button
+                            onClick={() => handleUseItem(item.id)}
+                            disabled={!canUseNow}
+                            className={`px-2 py-1 rounded text-xs font-semibold transition-colors ${
+                              canUseNow
+                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Use
+                          </button>
+                        )}
                       </div>
-                      <div className="text-slate-400">
-                        {item.availableUses} uses • {calculateItemValue(item)} coins
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
