@@ -729,6 +729,7 @@ const gameSlice = createSlice({
         });
 
         // Apply start-of-phase effects for the next phase
+        const apIncrement = 2;
         switch (state.currentPhase) {
           case 'ap_renewal':
             // Give all players +2 AP at the start of each round
