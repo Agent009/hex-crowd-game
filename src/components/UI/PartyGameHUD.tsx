@@ -66,7 +66,7 @@ export const PartyGameHUD: React.FC = () => {
 
       return () => clearInterval(interval);
     }
-  }, [gameMode, isGamePaused, dispatch]);
+  }, [gameMode, isGamePaused, dispatch, tiles]);
 
   const formatPhaseTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);

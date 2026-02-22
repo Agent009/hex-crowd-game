@@ -18,7 +18,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   const sceneRef = useRef<GameScene | null>(null);
   const dispatch = useDispatch();
 
-  const { tiles, activeTiles } = useSelector((state: RootState) => state.world);
+  const { tiles } = useSelector((state: RootState) => state.world);
   const { showPlayerNumbers } = useSelector((state: RootState) => state.ui);
   const { activityEvents } = useSelector((state: RootState) => state.game);
   const lastDisasterEventIdRef = useRef<string | null>(null);

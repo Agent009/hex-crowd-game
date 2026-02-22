@@ -2,7 +2,6 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { coordsToKey, areAdjacent, CubeCoords } from '../utils/hexGrid';
 import { itemDatabase } from '../data/harvestData';
 import {
-  gameSize,
   maxPlayers,
   requiredTeams,
   requiredPlayersPerTeam,
