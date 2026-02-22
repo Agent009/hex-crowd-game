@@ -3,6 +3,7 @@ import { CubeCoords, coordsToKey, cubeToPixel } from "../utils/hexGrid";
 import { TerrainType } from "../data/gameData";
 import { TextureKeys } from "./TextureFactory";
 import { ParticleEmitterManager } from "./ParticleEmitterManager";
+import { PerformanceSettings } from "./GameConfig";
 
 export interface ParticleConfig {
   x: number;
@@ -16,7 +17,7 @@ export interface ParticleConfig {
   gravity?: number;
 }
 
-export class AtmosphericParticleSystem {
+export class AtmosphericParticleSystem implements PerformanceSettings {
   private scene: Phaser.Scene;
   private particleEmitterManager: ParticleEmitterManager;
   private fogParticleIds: Set<string> = new Set();

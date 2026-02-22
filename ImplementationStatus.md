@@ -190,24 +190,16 @@ All null safety and runtime error issues have been fixed.
 
 ---
 
-## Phase 7: Performance Mode & Configuration
+## Phase 7: Performance Mode & Configuration -- RESOLVED
 
-### 7.1 Magic Numbers Throughout Codebase
-Hardcoded values scattered across all files:
-- `GameEngine.ts`: Camera speed (5), zoom bounds (0.5-2), depth offset (-1000), background color (#2D5016)
-- `AnimationSystem.ts`: Particle counts (8, 15), ring counts (5, 10), ray counts (4, 8), HUD position (100, 50), scaling multipliers
-- `GameCanvas.tsx`: Polling interval (100ms)
-- **Fix:** Extract all magic numbers to a central `GameConfig.ts` constants file.
+### 7.1 Magic Numbers Throughout Codebase - RESOLVED
+- **Fix Applied:** Created `src/game/GameConfig.ts` with a single `GameConfig` const object containing all magic numbers, organized into logical groups: `camera` (speed, zoom bounds, zoom factors, background color), `rendering` (all depth values), `animation` (particle counts, ring counts, ray counts, HUD position, disaster timing), and `canvas` (polling interval, max attempts, resize debounce, min height). Updated `GameEngine.ts`, `AnimationSystem.ts`, and `GameCanvas.tsx` to reference `GameConfig` throughout.
 
-### 7.2 Performance Mode Only Partial (AnimationSystem vs ParticleSystem)
-- `AnimationSystem.ts` has `performanceMode` flag
-- `ParticleSystem.ts` has no performance mode support
-- **Fix:** Create shared `PerformanceSettings` interface, apply consistently across all systems.
+### 7.2 Performance Mode Only Partial - RESOLVED
+- **Fix Applied:** Added `PerformanceSettings` interface to `GameConfig.ts` with `setPerformanceMode(enabled: boolean): void` and `getPerformanceMode(): boolean`. Both `GameAnimationSystem` and `AtmosphericParticleSystem` now implement this interface. Added the missing `getPerformanceMode()` method to `GameAnimationSystem`.
 
-### 7.3 No Responsive Canvas Handling
-- **File:** `src/components/GameCanvas.tsx` ~lines 38-39
-- **Issue:** Uses `window.innerWidth` and `window.innerHeight` at initialization only. No resize listener.
-- **Fix:** Add window resize event listener with debounce, update Phaser game dimensions.
+### 7.3 No Responsive Canvas Handling - RESOLVED
+- **Fix Applied:** Added a `useEffect` in `GameCanvas.tsx` that listens for `window.resize` events and debounces them at `GameConfig.canvas.resizeDebounceMs` (150ms). On resize, calls `gameRef.current.scale.resize(width, height)` to update Phaser's internal dimensions. Cleanup removes the event listener and clears any pending debounce timer.
 
 ---
 

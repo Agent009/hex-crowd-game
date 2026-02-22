@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { CubeCoords, cubeToPixel, getHexPoints } from "../utils/hexGrid";
+import { GameConfig, PerformanceSettings } from "./GameConfig";
 import { resourceData, ResourceType } from "../data/gameData";
 import { BuildingType } from "../data/buildingsData";
 import { TextureFactory, TextureKeys } from "./TextureFactory";
@@ -35,7 +36,7 @@ export interface DisasterAnimationConfig extends AnimationConfig {
   affectedTiles: CubeCoords[];
 }
 
-export class GameAnimationSystem {
+export class GameAnimationSystem implements PerformanceSettings {
   private scene: Phaser.Scene;
   private hexSize: number;
   private activeAnimations: Set<Phaser.Tweens.Tween> = new Set();
@@ -154,8 +155,9 @@ export class GameAnimationSystem {
         resourceInfo.color
       ).color;
 
-      // Adjust particle count based on performance mode
-      const particleCount = this.performanceMode ? 8 : 15;
+      const particleCount = this.performanceMode
+        ? GameConfig.animation.particleCountLow
+        : GameConfig.animation.particleCountHigh;
 
       // Get texture key from TextureFactory
       const textureKey = TextureFactory.getResourceParticleKey(resourceType);
@@ -201,7 +203,7 @@ export class GameAnimationSystem {
       });
       resourceIcon.setPosition(position.x, position.y);
       resourceIcon.setOrigin(0.5);
-      resourceIcon.setDepth(1100);
+      resourceIcon.setDepth(GameConfig.rendering.animationDepth);
 
       // Animate icon
       const iconTween = this.scene.tweens.add({
@@ -231,7 +233,7 @@ export class GameAnimationSystem {
     return new Promise((resolve) => {
       // This would typically update the UI counter with a smooth increment
       // For now, we'll create a floating text effect
-      const hudPosition = { x: 100, y: 50 }; // Approximate HUD position
+      const hudPosition = { x: GameConfig.animation.hudX, y: GameConfig.animation.hudY };
 
       const floatingText = this.createText();
       floatingText.setText(`+${amount}`);
@@ -242,7 +244,7 @@ export class GameAnimationSystem {
       });
       floatingText.setPosition(hudPosition.x, hudPosition.y);
       floatingText.setOrigin(0.5);
-      floatingText.setDepth(1200);
+      floatingText.setDepth(GameConfig.rendering.hudTextDepth);
 
       const textTween = this.scene.tweens.add({
         targets: floatingText,
@@ -333,9 +335,12 @@ export class GameAnimationSystem {
     duration: number
   ): Promise<void> {
     return new Promise((resolve) => {
-      // Adjust particle count based on performance mode
-      const particleCount = this.performanceMode ? 1 : 2;
-      const frequency = this.performanceMode ? 100 : 50;
+      const particleCount = this.performanceMode
+        ? GameConfig.animation.sparkleQuantityLow
+        : GameConfig.animation.sparkleQuantityHigh;
+      const frequency = this.performanceMode
+        ? GameConfig.animation.sparkleFrequencyLow
+        : GameConfig.animation.sparkleFrequencyHigh;
 
       this.particleEmitterManager.createEmitter({
         x: position.x,
@@ -418,7 +423,7 @@ export class GameAnimationSystem {
       });
       levelText.setPosition(position.x, position.y - 20);
       levelText.setOrigin(0.5);
-      levelText.setDepth(1110);
+      levelText.setDepth(GameConfig.rendering.animationDepth + 10);
 
       const textTween = this.scene.tweens.add({
         targets: levelText,
@@ -462,7 +467,7 @@ export class GameAnimationSystem {
       // Create fog overlay using pooled graphics
       const fogOverlay = this.createGraphics();
       fogOverlay.setPosition(position.x, position.y);
-      fogOverlay.setDepth(1305);
+      fogOverlay.setDepth(GameConfig.rendering.fogDepth);
 
       const dissolveTween = this.scene.tweens.add({
         targets: fogOverlay,
@@ -474,8 +479,9 @@ export class GameAnimationSystem {
 
           fogOverlay.clear();
 
-          // Create gradient effect with fewer rings in performance mode
-          const ringCount = this.performanceMode ? 5 : 10;
+          const ringCount = this.performanceMode
+            ? GameConfig.animation.ringCountLow
+            : GameConfig.animation.ringCountHigh;
           for (let i = 0; i < ringCount; i++) {
             const alpha = 0.6 * (1 - progress) * (1 - i / ringCount);
             const ringRadius = currentRadius + i * 5;
@@ -500,7 +506,9 @@ export class GameAnimationSystem {
     duration: number
   ): Promise<void> {
     return new Promise((resolve) => {
-      const rayCount = this.performanceMode ? 4 : 8;
+      const rayCount = this.performanceMode
+        ? GameConfig.animation.rayCountLow
+        : GameConfig.animation.rayCountHigh;
       const rays: Phaser.GameObjects.Image[] = [];
 
       for (let i = 0; i < rayCount; i++) {
@@ -559,6 +567,10 @@ export class GameAnimationSystem {
     this.particleEmitterManager.setPerformanceMode(enabled);
   }
 
+  public getPerformanceMode(): boolean {
+    return this.performanceMode;
+  }
+
   public getActiveAnimationCount(): number {
     return this.activeAnimations.size;
   }
@@ -592,7 +604,10 @@ export class GameAnimationSystem {
 
       // Screen shake for earthquakes
       if (disasterId === "earthquake") {
-        this.scene.cameras.main.shake(500, 0.05); // Increased intensity for more visible shake
+        this.scene.cameras.main.shake(
+          GameConfig.animation.earthquakeShakeDuration,
+          GameConfig.animation.earthquakeShakeIntensity
+        );
       }
 
       // Create disaster sprites on affected tiles
@@ -600,7 +615,7 @@ export class GameAnimationSystem {
         return new Promise((tileResolve) => {
           const pixel = cubeToPixel(coords, this.hexSize);
           const sprite = this.scene.add.sprite(pixel.x, pixel.y, textureKey);
-          sprite.setDepth(1500);
+          sprite.setDepth(GameConfig.rendering.disasterDepth);
           sprite.setAlpha(0.8);
           this.activeGameObjects.add(sprite);
 
@@ -608,7 +623,7 @@ export class GameAnimationSystem {
             targets: sprite,
             alpha: { from: 0.8, to: 0 },
             scale: { from: 1, to: 1.5 },
-            duration: 2000,
+            duration: GameConfig.animation.disasterTweenDuration,
             ease: "Power2",
             onComplete: () => {
               this.activeGameObjects.delete(sprite);

@@ -17,6 +17,7 @@ import { GameAnimationSystem } from "./AnimationSystem";
 import { TextureFactory } from "./TextureFactory";
 import { ParticleEmitterManager } from "./ParticleEmitterManager";
 import { setPhaserGame, clearPhaserGame } from "./phaserRef";
+import { GameConfig } from "./GameConfig";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
@@ -53,9 +54,8 @@ export class GameScene extends Phaser.Scene {
     setPhaserGame(this.game);
 
     if (isIsometricGrid) {
-      // Adjust camera for better isometric viewing
-      this.cameras.main.setRotation(0); // Keep rotation at 0 for true isometric
-      this.cameras.main.setBackgroundColor("#2D5016"); // Darker background for depth
+      this.cameras.main.setRotation(0);
+      this.cameras.main.setBackgroundColor(GameConfig.camera.backgroundColor);
     }
 
     // Enable input
@@ -98,7 +98,7 @@ export class GameScene extends Phaser.Scene {
 
   update() {
     if (this.cursors) {
-      const speed = 5;
+      const speed = GameConfig.camera.keyboardSpeed;
       if (this.cursors.left?.isDown) this.cameras.main.scrollX -= speed;
       if (this.cursors.right?.isDown) this.cameras.main.scrollX += speed;
       if (this.cursors.up?.isDown) this.cameras.main.scrollY -= speed;
@@ -227,7 +227,7 @@ export class GameScene extends Phaser.Scene {
               align: "center",
             })
             .setOrigin(0.5)
-            .setDepth(1000);
+            .setDepth(GameConfig.rendering.terrainIconDepth);
           this.tileTerrainIcons.set(key, iconText);
         }
       }
@@ -248,7 +248,7 @@ export class GameScene extends Phaser.Scene {
             padding: { x: 6, y: 4 },
           })
           .setOrigin(0.5)
-          .setDepth(1010);
+          .setDepth(GameConfig.rendering.playerNumberDepth);
 
         // Make it circular
         playerText.setStyle({
@@ -334,7 +334,7 @@ export class GameScene extends Phaser.Scene {
       strokeAlpha
     );
     // Farthest (small y) drawn first, then closer on top
-    graphics.setDepth(Math.round(y - 1000));
+    graphics.setDepth(Math.round(y + GameConfig.rendering.tileDepthOffset));
   }
 
   private drawHex(
@@ -541,11 +541,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleWheel(event: WheelEvent) {
-    const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+    const zoomFactor = event.deltaY > 0 ? GameConfig.camera.zoomOutFactor : GameConfig.camera.zoomInFactor;
     const newZoom = Phaser.Math.Clamp(
       this.cameras.main.zoom * zoomFactor,
-      0.5,
-      2
+      GameConfig.camera.minZoom,
+      GameConfig.camera.maxZoom
     );
     this.cameras.main.setZoom(newZoom);
     this.particleSystem.setZoomLevel(newZoom);

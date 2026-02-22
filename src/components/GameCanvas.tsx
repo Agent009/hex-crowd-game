@@ -7,6 +7,7 @@ import { GameScene } from '../game/GameEngine';
 import { CubeCoords } from '../utils/hexGrid';
 import { disasterData } from '../data/gameData';
 import { TerrainType } from '../data/gameData';
+import { GameConfig } from '../game/GameConfig';
 
 interface GameCanvasProps {
   className?: string;
@@ -42,7 +43,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
         width: window.innerWidth,
         height: window.innerHeight,
         parent: 'game-container',
-        backgroundColor: '#2D5016',
+        backgroundColor: GameConfig.camera.backgroundColor,
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -61,17 +62,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
         return;
       }
 
-      const MAX_POLL_ATTEMPTS = 50;
       let pollAttempts = 0;
 
-      // Use a safer approach to wait for the scene to be ready
       const checkForScene = () => {
         pollAttempts++;
         if (gameRef.current && gameRef.current.scene.isActive('GameScene')) {
           sceneRef.current = gameRef.current.scene.getScene('GameScene') as GameScene;
 
           if (sceneRef.current) {
-            // Initialize scene with current game state
             sceneRef.current.initializeScene({
               tiles,
               onTileClick: handleTileClick,
@@ -79,8 +77,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
               showPlayerNumbers
             });
           }
-        } else if (pollAttempts < MAX_POLL_ATTEMPTS) {
-          pollTimerId = setTimeout(checkForScene, 100);
+        } else if (pollAttempts < GameConfig.canvas.maxPollAttempts) {
+          pollTimerId = setTimeout(checkForScene, GameConfig.canvas.pollingIntervalMs);
         }
       };
 
@@ -115,6 +113,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - only run once on mount
+
+  // Handle window resize with debounce
+  useEffect(() => {
+    let resizeTimerId: ReturnType<typeof setTimeout> | null = null;
+
+    const handleResize = () => {
+      if (resizeTimerId !== null) clearTimeout(resizeTimerId);
+      resizeTimerId = setTimeout(() => {
+        if (gameRef.current) {
+          gameRef.current.scale.resize(window.innerWidth, window.innerHeight);
+        }
+      }, GameConfig.canvas.resizeDebounceMs);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimerId !== null) clearTimeout(resizeTimerId);
+    };
+  }, []);
 
   // Update tiles when Redux state changes
   useEffect(() => {
@@ -188,7 +206,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
     <div 
       id="game-container" 
       className={`relative w-full h-full bg-green-900 ${className}`}
-      style={{ minHeight: '600px' }}
+      style={{ minHeight: `${GameConfig.canvas.minHeight}px` }}
     />
   );
 };
