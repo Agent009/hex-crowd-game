@@ -37,11 +37,26 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
   onClose
 }) => {
   const dispatch = useDispatch();
-  const { currentPlayer, currentPhase, playerStats, selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.game);
+  const { currentPlayer, currentPhase, playerStats } = useSelector((state: RootState) => state.game);
+  const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
 
   const [harvestGrid] = useState(() => new HarvestGridClass());
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [gridKey, setGridKey] = useState(0);
+  const [flashMessage, setFlashMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const flashTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showFlash = (text: string, type: 'error' | 'success' = 'error') => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setFlashMessage({ text, type });
+    flashTimerRef.current = setTimeout(() => setFlashMessage(null), 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, []);
 
   // Update active tab when initialTab changes
   useEffect(() => {
@@ -56,27 +71,27 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
   const handleHarvestResource = (terrainType: TerrainType, slotIndex: number) => {
     if (!currentPlayer || !currentPlayerStats || !selectedTile) {
-      alert('You must select a tile and be on it to harvest!');
+      showFlash('You must select a tile and be on it to harvest!');
       return;
     }
 
     if (!isPlayerOnSelectedTile) {
-      alert('You must be on the selected tile to harvest from it!');
+      showFlash('You must be on the selected tile to harvest from it!');
       return;
     }
 
     if (!isSelectedTileActive) {
-      alert('This tile is inactive and cannot be harvested from!');
+      showFlash('This tile is inactive and cannot be harvested from!');
       return;
     }
 
     if (selectedTileData?.terrain !== terrainType) {
-      alert(`You can only harvest ${terrainType} resources from ${terrainType} tiles!`);
+      showFlash(`You can only harvest ${terrainType} resources from ${terrainType} tiles!`);
       return;
     }
 
     if (currentPlayerStats.actionPoints < 1) {
-      alert('Not enough Action Points!');
+      showFlash('Not enough Action Points!');
       return;
     }
 
@@ -86,7 +101,9 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
         playerId: currentPlayer.id,
         tileCoords: selectedTile,
         resourceId: resource.id,
-        isItem: false
+        isItem: false,
+        tiles,
+        activeTiles
       }));
 
       setGridKey(prev => prev + 1);
@@ -95,22 +112,22 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
   const handleHarvestItem = (slotIndex: number) => {
     if (!currentPlayer || !currentPlayerStats || !selectedTile) {
-      alert('You must select a tile and be on it to harvest!');
+      showFlash('You must select a tile and be on it to harvest!');
       return;
     }
 
     if (!isPlayerOnSelectedTile) {
-      alert('You must be on the selected tile to harvest from it!');
+      showFlash('You must be on the selected tile to harvest from it!');
       return;
     }
 
     if (!isSelectedTileActive) {
-      alert('This tile is inactive and cannot be harvested from!');
+      showFlash('This tile is inactive and cannot be harvested from!');
       return;
     }
 
     if (currentPlayerStats.actionPoints < 3) {
-      alert('Not enough Action Points! Items cost 3 AP.');
+      showFlash('Not enough Action Points! Items cost 3 AP.');
       return;
     }
 
@@ -121,28 +138,25 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
         playerId: currentPlayer.id,
         tileCoords: selectedTile,
         itemId: item.id,
-        isItem: true
+        isItem: true,
+        tiles,
+        activeTiles
       }));
 
       setGridKey(prev => prev + 1);
     } else {
-      alert('Invalid item selection!');
+      showFlash('Invalid item selection!');
     }
   };
 
   const handleCraftItem = (itemId: string) => {
-    if (!currentPlayerStats) {
-      alert('No player selected!');
+    if (!currentPlayerStats || !currentPlayer) {
+      showFlash('No player selected!');
       return;
     }
 
     if (!canCraftItem(itemId, currentPlayerStats.resources)) {
-      alert('Cannot craft item - insufficient resources!');
-      return;
-    }
-
-    if (!currentPlayer) {
-      alert('No current player!');
+      showFlash('Cannot craft item - insufficient resources!');
       return;
     }
 
@@ -153,7 +167,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
     const itemTemplate = itemDatabase.find(item => item.id === itemId);
     if (itemTemplate) {
-      alert(`Successfully crafted ${itemTemplate.name}!`);
+      showFlash(`Successfully crafted ${itemTemplate.name}!`, 'success');
     }
   };
 
@@ -258,7 +272,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
                   return (
                     <div
-                      key={index}
+                      key={resourceData.id}
                       className={`flex items-center justify-between p-2 rounded transition-colors ${
                         canHarvest 
                           ? 'bg-slate-600 hover:bg-slate-500 cursor-pointer' 
@@ -518,6 +532,18 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
             </div>
           </div>
 
+          {/* Flash Message */}
+          {flashMessage && (
+            <div className={`mt-2 p-2 rounded text-xs flex items-center transition-opacity ${
+              flashMessage.type === 'success'
+                ? 'bg-green-900 text-green-200'
+                : 'bg-red-900 text-red-200'
+            }`}>
+              <AlertCircle className="w-3 h-3 mr-1 flex-shrink-0" />
+              {flashMessage.text}
+            </div>
+          )}
+
           {/* Status Messages */}
           {!currentPlayer && (
             <div className="mt-2 p-2 bg-yellow-900 rounded text-yellow-200 text-xs flex items-center">
@@ -576,7 +602,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
                 </h4>
                 <div className="space-y-1 max-h-20 overflow-y-auto">
                   {currentPlayerStats.items.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between bg-slate-700 p-2 rounded text-xs">
+                    <div key={`${item.id}_${index}`} className="flex items-center justify-between bg-slate-700 p-2 rounded text-xs">
                       <div className="flex items-center space-x-2">
                         <span>{renderItemIcon(item.id)}</span>
                         <span className="text-white">{item.name}</span>

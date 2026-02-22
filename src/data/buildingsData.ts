@@ -58,7 +58,7 @@ export const buildingCategories = {
 export type BuildingCategoryType = keyof typeof buildingCategories;
 
 // Centralized building database
-export const buildingDatabase: BuildingData[] = [
+export const buildingDatabase = [
   {
     id: 'town_hall',
     name: 'Town Hall',
@@ -554,7 +554,7 @@ export const buildingDatabase: BuildingData[] = [
       }
     ]
   },
-] as const;
+] as const satisfies readonly BuildingData[];
 
 export type BuildingType = ExtractId<(typeof buildingDatabase)[number]>;
 

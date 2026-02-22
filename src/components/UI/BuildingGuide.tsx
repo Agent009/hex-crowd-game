@@ -151,8 +151,8 @@ export const BuildingGuide: React.FC = () => {
                     <div className="mt-2">
                       <div className="text-xs text-slate-400 mb-1">Benefits:</div>
                       <ul className="text-xs text-green-400 space-y-1">
-                        {level.benefits.map((benefit, i) => (
-                          <li key={i}>• {benefit}</li>
+                        {level.benefits.map((benefit) => (
+                          <li key={benefit}>• {benefit}</li>
                         ))}
                       </ul>
                     </div>

@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { CubeCoords, HexTile, coordsToKey, generateHexSpiral, areAdjacent } from '../utils/hexGrid';
+import { coordsToKey, areAdjacent, CubeCoords } from '../utils/hexGrid';
 import { itemDatabase } from '../data/harvestData';
 import {
   gameSize,
@@ -7,61 +7,24 @@ import {
   requiredTeams,
   requiredPlayersPerTeam,
   isTestMode,
-  predefinedTerrain,
   playerStartingPositions,
   teamColors,
   Player,
   Team,
+  terrainData,
+  disasterData,
   TerrainType
 } from '../data/gameData';
+import { isCraftable } from '../utils/utils';
+import {
+  GamePhase,
+  PlayerStats,
+  ActivityEvent,
+  PlayerState,
+  PhaseState,
+} from './types';
 
-const MAX_ACTIVITY_EVENTS = 100;
-
-export interface GameState {
-  // World state
-  tiles: { [key: string]: HexTile };
-  worldSize: number;
-  selectedTile: CubeCoords | null;
-
-  // Party game state
-  gameMode: 'lobby' | 'playing' | 'ended';
-  players: Player[];
-  teams: Team[];
-  currentPlayer: Player | null;
-  gameTimer: number;
-  roundNumber: number;
-
-  // Player stats for party game
-  playerStats: { [playerId: string]: PlayerStats };
-
-  // Activity tracking
-  activityEvents: ActivityEvent[];
-
-  // Round phase system
-  currentPhase: GamePhase;
-  phaseStartTime: number;
-  phaseTimer: number; // Countdown timer for current phase
-  showPhaseOverlay: boolean;
-
-  // Tile states
-  activeTiles: string[]; // Tiles that can be harvested from
-
-  // UI state
-  showGrid: boolean;
-  cameraPosition: { x: number; y: number };
-  zoomLevel: number;
-  showPlayerNumbers: boolean;
-  showTileInfo: boolean;
-}
-
-export type GamePhase =
-  | 'round_start'
-  | 'ap_renewal'
-  | 'interaction'
-  | 'bartering'
-  | 'terrain_effects'
-  | 'disaster_check'
-  | 'elimination';
+export type { GamePhase, PlayerStats, ActivityEvent };
 
 export const phaseOrder: GamePhase[] = [
   'round_start',
@@ -101,21 +64,7 @@ export const dismissiblePhases: GamePhase[] = [
   'disaster_check',
   'elimination'
 ];
-export interface PlayerStats {
-  hp: number;
-  actionPoints: number;
-  coins: number;
-  resources: { [resourceId: string]: number };
-  items: ItemData[];
-  crests: number;
-  statusEffects: string[]; // Active status effects
-}
 
-import { ItemData } from '../data/harvestData';
-import { terrainData, disasterData } from '../data/gameData';
-import {isCraftable} from "../utils/utils";
-
-// Helper function to get phase display name
 export const getPhaseDisplayName = (phase: GamePhase): string => {
   switch (phase) {
     case 'round_start': return 'Round Start';
@@ -129,54 +78,8 @@ export const getPhaseDisplayName = (phase: GamePhase): string => {
   }
 };
 
-export interface ActivityEvent {
-  id: string;
-  timestamp: number;
-  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect';
-  subtype?: 'ap_renewal' | 'terrain_effect' | 'disaster';
-  playerId?: string;
-  playerName?: string;
-  playerNumber?: number;
-  message: string;
-  details?: {
-    coords?: { q: number; r: number; s: number };
-    terrain?: string;
-    item?: string;
-    resource?: string;
-    damage?: number;
-    healing?: number;
-    disaster?: string;
-    affectedPlayers?: string[];
-  };
-}
+const MAX_ACTIVITY_EVENTS = 100;
 
-const generatePartyGameWorld = (size: number): { [key: string]: HexTile } => {
-  const tiles: { [key: string]: HexTile } = {};
-  const center: CubeCoords = { q: 0, r: 0, s: 0 };
-
-  // Generate hex grid using proper spiral generation
-  const coords = generateHexSpiral(center, size);
-
-  coords.forEach(coord => {
-    const key = coordsToKey(coord);
-
-    // Use predefined terrain if available, otherwise default to plains
-    const terrain: TerrainType = predefinedTerrain[key] || 'plains';
-
-    tiles[key] = {
-      coords: coord,
-      terrain,
-      explored: true, // All tiles visible in party game
-      visible: true,
-      fogLevel: 2, // No fog of war in party game
-      isActive: true, // All tiles start as active
-    };
-  });
-
-  return tiles;
-};
-
-// Generate teams with colors
 const generateTeams = (): Team[] => {
   const teams: Team[] = [];
   for (let i = 0; i < requiredTeams; i++) {
@@ -191,41 +94,24 @@ const generateTeams = (): Team[] => {
   return teams;
 };
 
-const initialState: GameState = {
-  tiles: generatePartyGameWorld(gameSize),
-  worldSize: gameSize,
-  selectedTile: null,
+export interface GameState extends PlayerState, PhaseState {}
 
-  gameMode: 'lobby',
+const initialState: GameState = {
   players: [],
   teams: generateTeams(),
   currentPlayer: null,
+  playerStats: {},
+  gameMode: 'lobby',
   gameTimer: 0,
   roundNumber: 1,
-
-  playerStats: {},
-  activeTiles: Object.keys(generatePartyGameWorld(gameSize)),
-
   activityEvents: [],
 
   currentPhase: 'round_start',
   phaseStartTime: 0,
   phaseTimer: 0,
   showPhaseOverlay: false,
-  showGrid: true,
-  cameraPosition: { x: 0, y: 0 },
-  zoomLevel: 1,
-  showPlayerNumbers: true,
-  showTileInfo: false
 };
 
-/**
- * Consumes one use of an item if the player has it, and adds a status effect
- * @param playerStats The player's stats object
- * @param itemId The ID of the item to consume
- * @param statusMessage The message to add to status effects
- * @returns True if the item was found and consumed, false otherwise
- */
 const consumeItemUse = (
   playerStats: PlayerStats,
   itemId: string,
@@ -234,15 +120,12 @@ const consumeItemUse = (
   const itemIndex = playerStats.items.findIndex(item => item.id === itemId);
 
   if (itemIndex !== -1 && playerStats.items[itemIndex].availableUses > 0) {
-    // Consume one use of the item
     playerStats.items[itemIndex].availableUses -= 1;
 
-    // Add status effect
     if (statusMessage) {
       playerStats.statusEffects.push(statusMessage);
     }
 
-    // Remove item if no uses left
     if (playerStats.items[itemIndex].availableUses <= 0) {
       playerStats.items.splice(itemIndex, 1);
     }
@@ -253,38 +136,31 @@ const consumeItemUse = (
   return false;
 };
 
-// Apply disaster checks
-const applyDisasterCheck = (state: GameState) => {
+const applyDisasterCheck = (state: GameState, tiles: { [key: string]: import('../utils/hexGrid').HexTile }) => {
   state.activityEvents.unshift({
     id: `${Date.now()}_${Math.random()}`,
     timestamp: Date.now(),
     type: 'disaster',
-    message: `Applying disaster checks...`,
+    message: 'Applying disaster checks...',
     details: {}
   });
 
   const terrainPlayerCounts: { [terrain: string]: number } = {};
   const terrainTotalCounts: { [terrain: string]: number } = {};
 
-  // Count players per terrain and total tiles per terrain
-  Object.values(state.tiles).forEach(tile => {
+  Object.values(tiles).forEach(tile => {
     const terrain = tile.terrain;
     terrainTotalCounts[terrain] = (terrainTotalCounts[terrain] || 0) + 1;
-
     if (tile.players && tile.players.length > 0) {
       terrainPlayerCounts[terrain] = (terrainPlayerCounts[terrain] || 0) + tile.players.length;
     }
   });
-  console.log("gameSlice > applyDisasterCheck > playerCounts", terrainPlayerCounts, "total", terrainTotalCounts);
 
-  // Calculate disaster chances and apply disasters
   Object.entries(terrainPlayerCounts).forEach(([terrain, playerCount]) => {
-    // Roll for disaster (simplified - using 50% threshold for demo)
     const totalTiles = terrainTotalCounts[terrain] || 1;
     const disasterChance = Math.min(50, (playerCount / totalTiles) * 100);
     const disasterRoll = Math.floor(Math.random() * 100);
     const disasterOccurred = disasterRoll <= disasterChance;
-    console.log(`gameSlice > applyDisasterCheck [${terrain} - ${playerCount} players ${totalTiles} tiles] > occurred [chance/roll]`, disasterOccurred, `${disasterChance} / ${disasterRoll}`);
 
     if (disasterOccurred) {
       const terrainInfo = terrainData[terrain as TerrainType];
@@ -295,7 +171,6 @@ const applyDisasterCheck = (state: GameState) => {
         const disasterInfo = disasterData[disaster];
 
         if (disasterInfo) {
-          // Add the general disaster event
           state.activityEvents.unshift({
             id: `${Date.now()}_${Math.random()}`,
             timestamp: Date.now(),
@@ -303,21 +178,20 @@ const applyDisasterCheck = (state: GameState) => {
             message: `${disasterInfo.name} struck ${terrain} terrain!`,
             details: {
               disaster: disasterInfo.name,
-              terrain: terrain,
+              terrain,
               affectedPlayers: state.players
                 .filter(p => {
                   const tileKey = coordsToKey(p.position);
-                  const tile = state.tiles[tileKey];
+                  const tile = tiles[tileKey];
                   return tile && tile.terrain === terrain;
                 })
                 .map(p => p.name)
             }
           });
 
-          // Apply disaster effects to all players on affected terrain
           state.players.forEach(player => {
             const tileKey = coordsToKey(player.position);
-            const tile = state.tiles[tileKey];
+            const tile = tiles[tileKey];
             if (tile && tile.terrain === terrain) {
               const damage = disasterInfo.effects[terrain];
               if (damage < 0) {
@@ -326,7 +200,6 @@ const applyDisasterCheck = (state: GameState) => {
                   playerStats.hp = Math.max(0, playerStats.hp + damage);
                   playerStats.statusEffects.push(`${disasterInfo.name}: ${Math.abs(damage)} damage`);
 
-                  // Add disaster damage event
                   state.activityEvents.unshift({
                     id: `${Date.now()}_${Math.random()}`,
                     timestamp: Date.now(),
@@ -338,7 +211,7 @@ const applyDisasterCheck = (state: GameState) => {
                     details: {
                       damage: Math.abs(damage),
                       disaster: disasterInfo.name,
-                      terrain: terrain
+                      terrain
                     }
                   });
                 }
@@ -354,28 +227,29 @@ const applyDisasterCheck = (state: GameState) => {
     id: `${Date.now()}_${Math.random()}`,
     timestamp: Date.now(),
     type: 'disaster',
-    message: `Finished applying disaster checks`,
+    message: 'Finished applying disaster checks',
     details: {}
   });
 };
 
-const removeEliminatedPlayers = (state: GameState) => {
+const removeEliminatedPlayers = (
+  state: GameState,
+  tiles: { [key: string]: import('../utils/hexGrid').HexTile }
+) => {
   state.activityEvents.unshift({
     id: `${Date.now()}_${Math.random()}`,
     timestamp: Date.now(),
     type: 'elimination',
-    message: `Checking eliminated players...`,
+    message: 'Checking eliminated players...',
     details: {}
   });
 
-  // Remove eliminated players (0 HP)
   const eliminatedPlayers = state.players.filter(player => {
     const stats = state.playerStats[player.id];
     return stats && stats.hp <= 0;
   });
 
   eliminatedPlayers.forEach(player => {
-    // Add elimination event
     state.activityEvents.unshift({
       id: `${Date.now()}_${Math.random()}`,
       timestamp: Date.now(),
@@ -387,29 +261,24 @@ const removeEliminatedPlayers = (state: GameState) => {
       details: {}
     });
 
-    // Remove from the team
     const team = state.teams.find(t => t.id === player.teamId);
     if (team) {
       team.playerIds = team.playerIds.filter(id => id !== player.id);
     }
 
-    // Remove from tile
     const tileKey = coordsToKey(player.position);
-    const playerTile = state.tiles[tileKey];
+    const playerTile = tiles[tileKey];
     if (playerTile?.players) {
       playerTile.players = playerTile.players.filter(p => p.id !== player.id);
     }
 
-    // Remove from the players array
     const playerIndex = state.players.findIndex(p => p.id === player.id);
     if (playerIndex !== -1) {
       state.players.splice(playerIndex, 1);
     }
 
-    // Remove player stats
     delete state.playerStats[player.id];
 
-    // Update the current player if needed
     if (state.currentPlayer?.id === player.id) {
       state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
     }
@@ -419,16 +288,15 @@ const removeEliminatedPlayers = (state: GameState) => {
     id: `${Date.now()}_${Math.random()}`,
     timestamp: Date.now(),
     type: 'elimination',
-    message: `${eliminatedPlayers.length ? `${eliminatedPlayers.length} player(s) eliminated` : 'No players were eliminated'}`,
+    message: eliminatedPlayers.length
+      ? `${eliminatedPlayers.length} player(s) eliminated`
+      : 'No players were eliminated',
     details: {}
   });
 };
 
-// Helper function to handle round advancement logic
 const advanceToNextRound = (state: GameState) => {
   state.roundNumber += 1;
-  
-  // Add the round start event
   state.activityEvents.unshift({
     id: `${Date.now()}_${Math.random()}`,
     timestamp: Date.now(),
@@ -436,7 +304,6 @@ const advanceToNextRound = (state: GameState) => {
     message: `Round ${state.roundNumber} begins`,
     details: {}
   });
-
   state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
 };
 
@@ -444,30 +311,19 @@ const gameSlice = createSlice({
   name: 'game',
   initialState,
   reducers: {
-    // Player management
     joinGame: (state, action: PayloadAction<{ playerName: string }>) => {
       const { playerName } = action.payload;
 
-      if (state.players.length >= maxPlayers) {
-        return; // Game is full
-      }
+      if (state.players.length >= maxPlayers) return;
 
-      // Find available player number (1-30)
       const usedNumbers = new Set(state.players.map(p => p.number));
       let playerNumber = 1;
       while (usedNumbers.has(playerNumber) && playerNumber <= maxPlayers) {
         playerNumber++;
       }
+      if (playerNumber > maxPlayers) return;
 
-      if (playerNumber > maxPlayers) {
-        return; // No available slots
-      }
-
-      // Assign to team with fewest players
-      const teamPlayerCounts = state.teams.map(team => ({
-        team,
-        count: team.playerIds.length
-      }));
+      const teamPlayerCounts = state.teams.map(team => ({ team, count: team.playerIds.length }));
       teamPlayerCounts.sort((a, b) => a.count - b.count);
       const assignedTeam = teamPlayerCounts[0].team;
 
@@ -478,68 +334,43 @@ const gameSlice = createSlice({
         teamId: assignedTeam.id,
         color: assignedTeam.color,
         position: playerStartingPositions[playerNumber - 1],
-        isReady: isTestMode, // Auto-ready in test mode
+        isReady: isTestMode,
         isConnected: true
       };
 
       state.players.push(newPlayer);
       assignedTeam.playerIds.push(newPlayer.id);
 
-      // Place player on their starting tile
-      const tileKey = coordsToKey(newPlayer.position);
-      const startTile = state.tiles[tileKey];
-      if (startTile) {
-        if (!startTile.players) {
-          startTile.players = [];
-        }
-        startTile.players.push(newPlayer);
+      if (!state.currentPlayer) {
+        state.currentPlayer = newPlayer;
       }
 
-      // Initialize player stats
       state.playerStats[newPlayer.id] = {
         hp: 10,
-        actionPoints: 0, // Will get +2 AP at start of each round
+        actionPoints: 0,
         coins: 0,
         resources: {},
         items: [],
         crests: 0,
         statusEffects: []
       };
-
-      // Set as current player if first to join
-      if (!state.currentPlayer) {
-        state.currentPlayer = newPlayer;
-      }
     },
 
     leaveGame: (state, action: PayloadAction<{ playerId: string }>) => {
       const { playerId } = action.payload;
       const playerIndex = state.players.findIndex(p => p.id === playerId);
-
       if (playerIndex === -1) return;
 
       const player = state.players[playerIndex];
 
-      // Remove from team
       const team = state.teams.find(t => t.id === player.teamId);
       if (team) {
         team.playerIds = team.playerIds.filter(id => id !== playerId);
       }
 
-      // Remove from tile
-      const tileKey = coordsToKey(player.position);
-      const leaveTile = state.tiles[tileKey];
-      if (leaveTile?.players) {
-        leaveTile.players = leaveTile.players.filter(p => p.id !== playerId);
-      }
-
-      // Remove player
       state.players.splice(playerIndex, 1);
-
-      // Remove player stats
       delete state.playerStats[playerId];
 
-      // Update current player if needed
       if (state.currentPlayer?.id === playerId) {
         state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
       }
@@ -553,12 +384,10 @@ const gameSlice = createSlice({
     },
 
     startGame: (state) => {
-      // Check if we have the required number of teams and players per team
       const teamsWithPlayers = state.teams.filter(t => t.playerIds.length >= requiredPlayersPerTeam);
       const hasRequiredTeams = teamsWithPlayers.length >= requiredTeams;
       const allPlayersReady = state.players.every(p => p.isReady);
 
-      // In test mode, allow starting with fewer requirements
       const canStart = isTestMode
         ? (state.players.length >= 2 && allPlayersReady)
         : (hasRequiredTeams && allPlayersReady);
@@ -567,14 +396,11 @@ const gameSlice = createSlice({
         state.gameMode = 'playing';
         state.gameTimer = 0;
         state.roundNumber = 1;
-
-        // Start the first phase
         state.currentPhase = 'round_start';
         state.phaseStartTime = Date.now();
         state.phaseTimer = phaseDurations.round_start;
         state.showPhaseOverlay = true;
 
-        // Add game start event
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
@@ -589,64 +415,41 @@ const gameSlice = createSlice({
       state.gameMode = 'ended';
     },
 
-    // Game mechanics
-    selectTile: (state, action: PayloadAction<CubeCoords>) => {
-      state.selectedTile = action.payload;
-    },
-
-    deselectTile: (state) => {
-      state.selectedTile = null;
-    },
-
-    movePlayer: (state, action: PayloadAction<{ playerId: string; target: CubeCoords }>) => {
-      const { playerId, target } = action.payload;
+    movePlayer: (state, action: PayloadAction<{
+      playerId: string;
+      target: CubeCoords;
+      tiles: { [key: string]: import('../utils/hexGrid').HexTile };
+    }>) => {
+      const { playerId, target, tiles } = action.payload;
       const player = state.players.find(p => p.id === playerId);
       const playerStats = state.playerStats[playerId];
 
       if (!player || !playerStats) return;
+      if (state.currentPhase !== 'interaction') return;
+      if (!areAdjacent(player.position, target)) return;
 
-      // Restrict movement to interaction phase only
-      if (state.currentPhase !== 'interaction') {
-        return; // Cannot move outside of interaction phase
-      }
-
-      // Check if target tile is adjacent to current position
-      if (!areAdjacent(player.position, target)) {
-        return; // Can only move to adjacent tiles
-      }
-
-      // Get terrain data for movement requirements
       const targetTileKey = coordsToKey(target);
-      const targetTile = state.tiles[targetTileKey];
+      const targetTile = tiles[targetTileKey];
       if (!targetTile) return;
 
       const terrain = terrainData[targetTile.terrain];
       let movementCost = terrain.moveCost;
       let itemUsed = false;
 
-      // Check if terrain requires a specific item
       if (terrain.requiredItem) {
         if (consumeItemUse(playerStats, terrain.requiredItem, `Used ${terrain.requiredItem}`)) {
           itemUsed = true;
         } else {
-          // Player doesn't have the required item - pay extra AP
           movementCost = terrain.alternativeAPCost || (terrain.moveCost + 1);
         }
       }
 
-      // Check if player has enough AP
-      if (playerStats.actionPoints < movementCost) {
-        return; // Not enough AP to move
-      }
+      if (playerStats.actionPoints < movementCost) return;
 
-      // Deduct AP for movement
       playerStats.actionPoints -= movementCost;
 
-      // Add status effect for item usage (for UI feedback)
       if (itemUsed) {
         playerStats.statusEffects.push(`Used ${terrain.requiredItem}`);
-
-        // Add item usage event
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
@@ -658,27 +461,12 @@ const gameSlice = createSlice({
           details: { item: terrain.requiredItem?.replace('_', ' ') }
         });
       }
-      // Remove player from current tile
-      const currentTileKey = coordsToKey(player.position);
-      const currentTile = state.tiles[currentTileKey];
-      if (currentTile?.players) {
-        currentTile.players = currentTile.players.filter(p => p.id !== playerId);
-      }
 
-      // Update player position
       player.position = target;
 
-      // Add player to new tile
-      const newTileKey = coordsToKey(target);
-      const newTile = state.tiles[newTileKey];
+      const newTile = tiles[coordsToKey(target)];
       if (newTile) {
-        if (!newTile.players) {
-          newTile.players = [];
-        }
-        newTile.players.push(player);
-
-        // Add activity event
-        const terrain = terrainData[newTile.terrain];
+        const moveTerrain = terrainData[newTile.terrain];
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
@@ -686,11 +474,8 @@ const gameSlice = createSlice({
           playerId,
           playerName: player.name,
           playerNumber: player.number,
-          message: `${player.name} moved to tile (${target.q}, ${target.r}, ${target.s}) (${terrain.name})`,
-          details: {
-            coords: target,
-            terrain: terrain.name
-          }
+          message: `${player.name} moved to tile (${target.q}, ${target.r}, ${target.s}) (${moveTerrain.name})`,
+          details: { coords: target, terrain: moveTerrain.name }
         });
       }
     },
@@ -699,7 +484,9 @@ const gameSlice = createSlice({
       state.gameTimer = action.payload;
     },
 
-    updatePhaseTimer: (state) => {
+    updatePhaseTimer: (state, action: PayloadAction<{ tiles: { [key: string]: import('../utils/hexGrid').HexTile } }>) => {
+      const { tiles } = action.payload;
+
       if (state.phaseTimer > 0) {
         state.phaseTimer -= 1;
       }
@@ -708,7 +495,6 @@ const gameSlice = createSlice({
         const currentIndex = phaseOrder.indexOf(state.currentPhase);
         const nextIndex = (currentIndex + 1) % phaseOrder.length;
 
-        // If we're at the end of the phase cycle, start a new round
         if (nextIndex === 0) {
           advanceToNextRound(state);
         }
@@ -719,7 +505,6 @@ const gameSlice = createSlice({
         state.phaseTimer = phaseDurations[nextPhase];
         state.showPhaseOverlay = true;
 
-        // Add phase change event
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
@@ -728,15 +513,12 @@ const gameSlice = createSlice({
           details: {}
         });
 
-        // Apply start-of-phase effects for the next phase
         const apIncrement = 2;
         switch (state.currentPhase) {
           case 'ap_renewal':
-            // Give all players +2 AP at the start of each round
             state.players.forEach(player => {
               if (state.playerStats[player.id]) {
                 state.playerStats[player.id].actionPoints += apIncrement;
-                // Clear status effects from previous round
                 state.playerStats[player.id].statusEffects = [];
               }
             });
@@ -749,13 +531,13 @@ const gameSlice = createSlice({
               details: {}
             });
             break;
+
           case 'terrain_effects':
-            // Apply terrain effects
             state.activityEvents.unshift({
               id: `${Date.now()}_${Math.random()}`,
               timestamp: Date.now(),
               type: 'terrain_effect',
-              message: `Applying terrain effects...`,
+              message: 'Applying terrain effects...',
               details: {}
             });
             state.players.forEach(player => {
@@ -763,7 +545,7 @@ const gameSlice = createSlice({
               if (!playerStats) return;
 
               const tileKey = coordsToKey(player.position);
-              const tile = state.tiles[tileKey];
+              const tile = tiles[tileKey];
               if (!tile) return;
 
               const terrain = terrainData[tile.terrain];
@@ -773,7 +555,6 @@ const gameSlice = createSlice({
               if (effects?.hpLossPerRound) {
                 let takeDamage = effects.hpLossPerRound;
 
-                // Check for protection item
                 if (effects.protectionItem) {
                   statusMessage = `Consumed ${effects.protectionItem} to reduce ${terrain.name} damage`;
                   if (consumeItemUse(playerStats, effects.protectionItem, statusMessage)) {
@@ -789,7 +570,6 @@ const gameSlice = createSlice({
                   }
                 }
 
-                // Check for protection resource
                 if (effects.protectionResource && takeDamage) {
                   const resourceAmount = playerStats.resources[effects.protectionResource] || 0;
                   if (resourceAmount > 0) {
@@ -826,16 +606,19 @@ const gameSlice = createSlice({
               id: `${Date.now()}_${Math.random()}`,
               timestamp: Date.now(),
               type: 'terrain_effect',
-              message: `Finished applying terrain effects`,
+              message: 'Finished applying terrain effects',
               details: {}
             });
             break;
+
           case 'disaster_check':
-            applyDisasterCheck(state);
+            applyDisasterCheck(state, tiles);
             break;
+
           case 'elimination':
-            removeEliminatedPlayers(state);
+            removeEliminatedPlayers(state, tiles);
             break;
+
           default:
             break;
         }
@@ -849,74 +632,50 @@ const gameSlice = createSlice({
     },
 
     forceNextPhase: (state) => {
-      // For test mode - force advance to next phase
       state.phaseTimer = 0;
     },
+
     nextRound: (state) => {
       advanceToNextRound(state);
     },
-    // Harvesting mechanics
+
     harvestFromTile: (state, action: PayloadAction<{
       playerId: string;
       tileCoords: CubeCoords;
       resourceId?: string;
       itemId?: string;
       isItem: boolean;
+      tiles: { [key: string]: import('../utils/hexGrid').HexTile };
+      activeTiles: string[];
     }>) => {
-      const { playerId, tileCoords, resourceId, itemId, isItem } = action.payload;
+      const { playerId, tileCoords, resourceId, itemId, isItem, tiles, activeTiles } = action.payload;
       const player = state.players.find(p => p.id === playerId);
       const playerStats = state.playerStats[playerId];
       const tileKey = coordsToKey(tileCoords);
-      const tile = state.tiles[tileKey];
+      const tile = tiles[tileKey];
 
       if (!player || !playerStats || !tile) return;
+      if (state.currentPhase !== 'interaction') return;
 
-      // Restrict harvesting to the interaction phase only
-      if (state.currentPhase !== 'interaction') {
-        return; // Cannot harvest outside the interaction phase
-      }
-
-      // Check if the player is on the tile
       const isPlayerOnTile = tile.players?.some(p => p.id === playerId);
       if (!isPlayerOnTile) return;
+      if (!activeTiles.includes(tileKey)) return;
 
-      // Check if the tile is active
-      if (!state.activeTiles.includes(tileKey)) return;
-
-      // Check AP requirements
       const apCost = isItem ? 3 : 1;
       if (playerStats.actionPoints < apCost) return;
 
-      // Deduct AP
       playerStats.actionPoints -= apCost;
 
-      // Add resource/item to player
       if (isItem && itemId) {
-        // Find the item template from the database
         const itemTemplate = itemDatabase.find(item => item.id === itemId);
         if (itemTemplate) {
-          // Generate random uses within the item's range
           const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
-          const harvestedItem = {
-            ...itemTemplate,
-            availableUses: uses
-          };
-          playerStats.items.push(harvestedItem);
+          playerStats.items.push({ ...itemTemplate, availableUses: uses });
         }
       } else if (resourceId) {
         playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) + 1;
       }
 
-      // Deactivate tile (except lakes which can be harvested multiple times)
-      if (tile.terrain !== 'lake') {
-        const tileIndex = state.activeTiles.indexOf(tileKey);
-        if (tileIndex > -1) {
-          state.activeTiles.splice(tileIndex, 1);
-        }
-        tile.isActive = false;
-      }
-
-      // Add activity event
       if (isItem && itemId) {
         const itemTemplate = itemDatabase.find(item => item.id === itemId);
         if (itemTemplate) {
@@ -946,6 +705,7 @@ const gameSlice = createSlice({
 
       state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
     },
+
     setCurrentPlayer: (state, action: PayloadAction<{ playerId: string }>) => {
       const player = state.players.find(p => p.id === action.payload.playerId);
       if (player) {
@@ -954,90 +714,48 @@ const gameSlice = createSlice({
     },
 
     updateTeamScore: (state, action: PayloadAction<{ teamId: string; points: number }>) => {
-      const { teamId, points } = action.payload;
-      const team = state.teams.find(t => t.id === teamId);
+      const team = state.teams.find(t => t.id === action.payload.teamId);
       if (team) {
-        team.score += points;
+        team.score += action.payload.points;
       }
     },
 
-    // Crafting mechanics
-    craftItem: (state, action: PayloadAction<{
-      playerId: string;
-      itemId: string;
-    }>) => {
+    craftItem: (state, action: PayloadAction<{ playerId: string; itemId: string }>) => {
       const { playerId, itemId } = action.payload;
       const playerStats = state.playerStats[playerId];
       const player = state.players.find(p => p.id === playerId);
 
       if (!player || !playerStats) return;
+      if (state.currentPhase !== 'interaction') return;
 
-      // Restrict crafting to interaction phase only
-      if (state.currentPhase !== 'interaction') {
-        return; // Cannot craft outside of interaction phase
-      }
-
-      // Find the item template
       const itemTemplate = itemDatabase.find(item => item.id === itemId);
       if (!itemTemplate || !isCraftable(itemTemplate)) return;
 
-      // Check if player has required resources
       for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
-        if ((playerStats.resources[resourceId] || 0) < required) {
-          return; // Not enough resources
-        }
+        if ((playerStats.resources[resourceId] || 0) < required) return;
       }
 
-      // Consume resources
       for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
         playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) - required;
       }
 
-      // Generate item with random uses
       const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
-      const craftedItem = {
-        ...itemTemplate,
-        availableUses: uses
-      }
+      playerStats.items.push({ ...itemTemplate, availableUses: uses });
 
-      // Add crafted item to player's inventory
-      playerStats.items.push(craftedItem);
-
-      // Add activity event
       state.activityEvents.unshift({
         id: `${Date.now()}_${Math.random()}`,
         timestamp: Date.now(),
         type: 'crafting',
         playerId,
-        playerName: player?.name || 'Unknown',
-        playerNumber: player?.number || 0,
-        message: `${player?.name || 'Unknown'} crafted ${itemTemplate.name}`,
+        playerName: player.name,
+        playerNumber: player.number,
+        message: `${player.name} crafted ${itemTemplate.name}`,
         details: { item: itemTemplate.name }
       });
 
       state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
     },
-    // UI controls
-    setCameraPosition: (state, action: PayloadAction<{ x: number; y: number }>) => {
-      state.cameraPosition = action.payload;
-    },
-
-    setZoomLevel: (state, action: PayloadAction<number>) => {
-      state.zoomLevel = Math.max(0.5, Math.min(2, action.payload));
-    },
-
-    toggleGrid: (state) => {
-      state.showGrid = !state.showGrid;
-    },
-
-    togglePlayerNumbers: (state) => {
-      state.showPlayerNumbers = !state.showPlayerNumbers;
-    },
-
-    toggleTileInfo: (state) => {
-      state.showTileInfo = !state.showTileInfo;
-    }
-  }
+  },
 });
 
 export const {
@@ -1046,8 +764,6 @@ export const {
   togglePlayerReady,
   startGame,
   endGame,
-  selectTile,
-  deselectTile,
   movePlayer,
   updateGameTimer,
   updatePhaseTimer,
@@ -1058,11 +774,6 @@ export const {
   harvestFromTile,
   craftItem,
   updateTeamScore,
-  setCameraPosition,
-  setZoomLevel,
-  toggleGrid,
-  togglePlayerNumbers,
-  toggleTileInfo
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

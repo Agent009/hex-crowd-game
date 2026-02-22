@@ -6,7 +6,9 @@ import { terrainData } from '../../data/gameData';
 import { MapPin, Users, Zap, AlertCircle } from 'lucide-react';
 
 export const TileInfo: React.FC = () => {
-  const { selectedTile, tiles, currentPlayer, playerStats, activeTiles, currentPhase, showTileInfo } = useSelector((state: RootState) => state.game);
+  const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
+  const { showTileInfo } = useSelector((state: RootState) => state.ui);
+  const { currentPlayer, playerStats, currentPhase } = useSelector((state: RootState) => state.game);
 
   if (!selectedTile || !showTileInfo) {
     return null;

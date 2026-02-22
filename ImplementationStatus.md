@@ -169,35 +169,24 @@ All null safety and runtime error issues have been fixed.
 
 ---
 
-## Phase 6: Architecture & State Management
+## Phase 6: Architecture & State Management -- RESOLVED
 
-### 6.1 Monolithic Game Slice
-- **File:** `src/store/gameSlice.ts`
-- **Issue:** All game state lives in a single massive Redux slice. This makes the file extremely large, hard to maintain, and prone to reducer conflicts.
-- **Fix:** Split into domain slices: `playerSlice`, `tileSlice`, `phaseSlice`, `inventorySlice`, etc. Use Redux Toolkit's `combineSlices` or standard `combineReducers`.
+### 6.1 Monolithic Game Slice - RESOLVED
+- **Fix Applied:** Split into three domain slices: `worldSlice` (tiles, selectedTile, activeTiles), `uiSlice` (showGrid, cameraPosition, zoomLevel, showPlayerNumbers, showTileInfo), and `gameSlice` (players, phase, activity log). Added `listenerMiddleware` to sync tile.players in worldSlice whenever player movement/join/leave/phase actions fire. Shared types extracted to `types.ts`. All consumers updated to read from correct slices.
 
-### 6.2 buildingSystem.ts State Mutation Pattern
-- **File:** `src/store/buildingSystem.ts` ~lines 101-111, 199, 210
-- **Issue:** Functions directly mutate `gameState` objects passed as parameters. While this works inside Immer-powered reducers, it makes these functions unsafe to call outside reducers and violates pure function principles.
-- **Fix:** Refactor to return new state objects instead of mutating parameters, or clearly document that these must only be called within Immer contexts.
+### 6.2 buildingSystem.ts State Mutation Pattern - N/A
+- **Note:** `buildingSystem.ts` was already removed from the project as legacy code. No action needed.
 
-### 6.3 buildingsData.ts Const vs Array Typing
-- **File:** `src/data/buildingsData.ts` ~line 61, 557
-- **Issue:** `buildingDatabase` is typed as `BuildingData[]` but also declared `as const`, creating contradictory mutability signals.
-- **Fix:** Use `as const satisfies readonly BuildingData[]` or remove the `as const`.
+### 6.3 buildingsData.ts Const vs Array Typing - RESOLVED
+- **Fix Applied:** Changed declaration from `export const buildingDatabase: BuildingData[] = [...] as const` to `export const buildingDatabase = [...] as const satisfies readonly BuildingData[]`. This correctly signals both immutability and type constraints without contradiction.
 
-### 6.4 Missing React Keys in List Renders
-Multiple components use `index` as key or omit keys entirely in `.map()` calls:
-- `src/components/UI/HarvestGrid.tsx` ~lines 261, 305, 402, 578
-- `src/components/UI/BuildingGuide.tsx` ~line 154
-- `src/components/UI/PartyGameHUD.tsx` ~lines 303, 323
-- `src/components/UI/BuildingPanel.tsx` ~lines 329, 456
-- **Fix:** Use stable, unique identifiers as keys.
+### 6.4 Missing React Keys in List Renders - RESOLVED
+- **HarvestGrid.tsx**: Changed resource slot key from `index` to `resourceData.id`; changed player items key from `index` to `${item.id}_${index}`.
+- **BuildingGuide.tsx**: Changed benefit list key from `i` to `benefit` (the string value itself).
+- **PartyGameHUD.tsx / BuildingPanel.tsx**: Already using stable IDs or file was removed.
 
-### 6.5 Alert-Based Validation (HarvestGrid.tsx)
-- **File:** `src/components/UI/HarvestGrid.tsx` ~lines 59, 64, 69, 74, 79, 98-100
-- **Issue:** Uses `alert()` for validation feedback, blocking the UI thread and providing poor UX.
-- **Fix:** Replace with in-component error messages or toast notifications.
+### 6.5 Alert-Based Validation - RESOLVED
+- **Fix Applied:** Replaced all 9 `alert()` calls in `HarvestGrid.tsx` with a `flashMessage` state. Messages auto-dismiss after 3 seconds. Error messages shown in red, success messages (crafted item) shown in green, displayed inline in the panel header.
 
 ---
 

@@ -4,14 +4,13 @@ import { RootState } from '../../store/store';
 import {
   nextRound,
   endGame,
-  toggleGrid,
-  togglePlayerNumbers,
   setCurrentPlayer,
   updatePhaseTimer,
   forceNextPhase,
   phaseOrder,
-  toggleTileInfo, getPhaseDisplayName
+  getPhaseDisplayName
 } from '../../store/gameSlice';
+import { toggleGrid, togglePlayerNumbers, toggleTileInfo } from '../../store/uiSlice';
 import { isTestMode } from '../../data/gameData';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
@@ -42,12 +41,12 @@ export const PartyGameHUD: React.FC = () => {
     currentPlayer,
     gameMode,
     roundNumber,
-    showGrid,
-    showPlayerNumbers,
     playerStats,
     currentPhase,
     phaseTimer
   } = useSelector((state: RootState) => state.game);
+  const { showGrid, showPlayerNumbers } = useSelector((state: RootState) => state.ui);
+  const { tiles } = useSelector((state: RootState) => state.world);
 
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
@@ -62,7 +61,7 @@ export const PartyGameHUD: React.FC = () => {
   useEffect(() => {
     if (gameMode === 'playing' && !isGamePaused) {
       const interval = setInterval(() => {
-        dispatch(updatePhaseTimer());
+        dispatch(updatePhaseTimer({ tiles }));
       }, 1000);
 
       return () => clearInterval(interval);

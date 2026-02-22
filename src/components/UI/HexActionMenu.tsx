@@ -1,7 +1,9 @@
 import React from 'react';
 import {useSelector, useDispatch} from 'react-redux';
 import {RootState} from '../../store/store';
-import {movePlayer, toggleTileInfo, deselectTile} from '../../store/gameSlice';
+import { movePlayer } from '../../store/gameSlice';
+import { deselectTile } from '../../store/worldSlice';
+import { toggleTileInfo } from '../../store/uiSlice';
 import {cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey, areAdjacent} from '../../utils/hexGrid';
 import {terrainData} from '../../data/gameData';
 import {
@@ -22,12 +24,10 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
                                                               onOpenHarvestGrid
                                                             }) => {
   const dispatch = useDispatch();
+  const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
   const {
-    selectedTile,
-    tiles,
     currentPlayer,
     playerStats,
-    activeTiles,
     currentPhase,
     showPhaseOverlay
   } = useSelector((state: RootState) => state.game);
@@ -75,7 +75,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     if (currentPlayer && canMove()) {
       dispatch(movePlayer({
         playerId: currentPlayer.id,
-        target: selectedTile
+        target: selectedTile,
+        tiles
       }));
       dispatch(deselectTile());
     }

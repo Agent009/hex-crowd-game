@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import Phaser from 'phaser';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store/store';
-import { selectTile } from '../store/gameSlice';
+import { selectTile } from '../store/worldSlice';
 import { GameScene } from '../game/GameEngine';
 import { CubeCoords } from '../utils/hexGrid';
 import { disasterData } from '../data/gameData';
@@ -17,7 +17,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   const sceneRef = useRef<GameScene | null>(null);
   const dispatch = useDispatch();
 
-  const { tiles, showPlayerNumbers, activityEvents } = useSelector((state: RootState) => state.game);
+  const { tiles, activeTiles } = useSelector((state: RootState) => state.world);
+  const { showPlayerNumbers } = useSelector((state: RootState) => state.ui);
+  const { activityEvents } = useSelector((state: RootState) => state.game);
   const lastDisasterEventIdRef = useRef<string | null>(null);
 
   // Memoized event handlers to prevent recreation on every render
