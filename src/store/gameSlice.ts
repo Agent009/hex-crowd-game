@@ -193,12 +193,43 @@ const applyDisasterCheck = (state: GameState, tiles: { [key: string]: import('..
             const tile = tiles[tileKey];
             if (tile && tile.terrain === terrain) {
               const damage = disasterInfo.effects[terrain];
-              if (damage < 0) {
-                const playerStats = state.playerStats[player.id];
-                if (playerStats) {
-                  playerStats.hp = Math.max(0, playerStats.hp + damage);
-                  playerStats.statusEffects.push(`${disasterInfo.name}: ${Math.abs(damage)} damage`);
+              const playerStats = state.playerStats[player.id];
+              if (!playerStats) return;
 
+              if (disaster === 'storm' && (terrain === 'lake' || terrain === 'river')) {
+                const boatIndex = playerStats.items.findIndex(item => item.id === 'boat');
+                if (boatIndex !== -1) {
+                  playerStats.items[boatIndex].availableUses -= 1;
+                  if (playerStats.items[boatIndex].availableUses <= 0) {
+                    playerStats.items.splice(boatIndex, 1);
+                    playerStats.hp = 0;
+                    playerStats.statusEffects.push(`Boat destroyed by Storm — eliminated`);
+                    state.activityEvents.unshift({
+                      id: `${Date.now()}_${Math.random()}`,
+                      timestamp: Date.now(),
+                      type: 'disaster',
+                      playerId: player.id,
+                      playerName: player.name,
+                      playerNumber: player.number,
+                      message: `${player.name}'s boat was destroyed by the Storm and they were eliminated`,
+                      details: { disaster: disasterInfo.name, terrain }
+                    });
+                  } else {
+                    playerStats.statusEffects.push(`Boat damaged by Storm (${playerStats.items[boatIndex].availableUses} uses left)`);
+                    state.activityEvents.unshift({
+                      id: `${Date.now()}_${Math.random()}`,
+                      timestamp: Date.now(),
+                      type: 'disaster',
+                      playerId: player.id,
+                      playerName: player.name,
+                      playerNumber: player.number,
+                      message: `${player.name}'s boat was damaged by the Storm`,
+                      details: { disaster: disasterInfo.name, terrain }
+                    });
+                  }
+                } else {
+                  playerStats.hp = 0;
+                  playerStats.statusEffects.push(`No boat — eliminated by Storm`);
                   state.activityEvents.unshift({
                     id: `${Date.now()}_${Math.random()}`,
                     timestamp: Date.now(),
@@ -206,14 +237,28 @@ const applyDisasterCheck = (state: GameState, tiles: { [key: string]: import('..
                     playerId: player.id,
                     playerName: player.name,
                     playerNumber: player.number,
-                    message: `${player.name} took ${Math.abs(damage)} damage from ${disasterInfo.name}`,
-                    details: {
-                      damage: Math.abs(damage),
-                      disaster: disasterInfo.name,
-                      terrain
-                    }
+                    message: `${player.name} had no boat and was eliminated by the Storm`,
+                    details: { disaster: disasterInfo.name, terrain }
                   });
                 }
+              } else if (damage < 0) {
+                playerStats.hp = Math.max(0, playerStats.hp + damage);
+                playerStats.statusEffects.push(`${disasterInfo.name}: ${Math.abs(damage)} damage`);
+
+                state.activityEvents.unshift({
+                  id: `${Date.now()}_${Math.random()}`,
+                  timestamp: Date.now(),
+                  type: 'disaster',
+                  playerId: player.id,
+                  playerName: player.name,
+                  playerNumber: player.number,
+                  message: `${player.name} took ${Math.abs(damage)} damage from ${disasterInfo.name}`,
+                  details: {
+                    damage: Math.abs(damage),
+                    disaster: disasterInfo.name,
+                    terrain
+                  }
+                });
               }
             }
           });
@@ -430,6 +475,18 @@ const gameSlice = createSlice({
       const targetTileKey = coordsToKey(target);
       const targetTile = tiles[targetTileKey];
       if (!targetTile) return;
+
+      const currentTileKey = coordsToKey(player.position);
+      const currentTile = tiles[currentTileKey];
+      if (currentTile) {
+        const currentTerrain = terrainData[currentTile.terrain];
+        if (currentTerrain.requiredItem === 'climbing_gear') {
+          const hasGear = playerStats.items.some(
+            item => item.id === 'climbing_gear' && item.availableUses > 0
+          );
+          if (!hasGear) return;
+        }
+      }
 
       const terrain = terrainData[targetTile.terrain];
       let movementCost = terrain.moveCost;

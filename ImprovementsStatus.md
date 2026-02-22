@@ -60,15 +60,13 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 - **Blocker:** None
 - **Notes:** Needs a heal-self reducer path in `consumeItemUse()`. HP capped at player max HP.
 
-### I5 — Boat Storm Destruction — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Disaster system needs to check for boat item when storm hits water tile. Destroy boat on 0 uses; consume use otherwise; eliminate player if no boat.
+### I5 — Boat Storm Destruction — COMPLETE
+- **Status:** Done
+- **Notes:** `applyDisasterCheck` in `gameSlice.ts` now special-cases the `storm` disaster on `lake`/`river` terrain. When a storm hits, each affected player's boat loses one use. If uses reach 0, the boat is removed and the player's HP is set to 0 (eliminated via the existing elimination phase). Players on water with no boat are immediately set to 0 HP. Both outcomes produce distinct activity log entries.
 
-### I6 — Climbing Gear Terrain Lock — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Movement validation in `movePlayer` reducer needs to check climbing gear uses before allowing exit from mountain tiles.
+### I6 — Climbing Gear Terrain Lock — COMPLETE
+- **Status:** Done
+- **Notes:** `movePlayer` reducer in `gameSlice.ts` now checks the player's **current** tile before allowing movement. If standing on a mountain tile (any tile whose `requiredItem` is `climbing_gear`), movement is blocked unless the player holds at least one climbing gear with remaining uses. No gear → cannot leave the mountain.
 
 ### I7 — Global Item Quantity Limits — OPEN
 - **Status:** Not started
@@ -165,11 +163,11 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 |-------|------------|------|-------------|---------|
 | C — Dead Code | 1 | 0 | 0 | 1 |
 | M — Game Mechanics | 4 | 4 | 0 | 0 |
-| I — Item System | 7 | 7 | 0 | 0 |
+| I — Item System | 7 | 5 | 0 | 2 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
 | P — Infrastructure | 3 | 3 | 0 | 0 |
-| **TOTAL** | **26** | **25** | **0** | **1** |
+| **TOTAL** | **26** | **23** | **0** | **3** |
 
 ---
 
