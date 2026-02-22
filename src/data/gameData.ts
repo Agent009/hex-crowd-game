@@ -1,7 +1,6 @@
 // Game data configuration for party game format
 import { Droplets, Waves, Mountain, Flag, Diamond, Trees } from "lucide-react";
 import React from "react";
-import { BuildingData, buildingDatabase, BuildingType } from "./buildingsData";
 import { CubeCoords } from "../utils/hexGrid";
 
 // Player data for party game
@@ -36,19 +35,6 @@ export interface StatEffectData {
   min: number; // Minimum effect value
   max: number; // Maximum effect value
 }
-
-// Faction data (simplified for party game)
-export const factions: FactionData[] = [
-  {
-    id: 'haven',
-    name: 'Haven',
-    description: 'The righteous kingdom of light and order',
-    color: '#4A90E2',
-    units: [],
-    buildings: [],
-    heroes: []
-  }
-];
 
 export type TerrainType = "lake" | "river" | "mountain" | "desert" | "plains" | "forest";
 export interface TerrainTypeData {
@@ -410,62 +396,3 @@ export const teamColors = [
   '#00BCD4', '#795548', '#607D8B', '#E91E63', '#3F51B5'
 ];
 
-export interface FactionData {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  units: UnitData[];
-  buildings: BuildingType[];
-  heroes: HeroData[];
-}
-
-export interface UnitData {
-  id: string;
-  name: string;
-  tier: number;
-  cost: ResourceAmount;
-  stats: UnitStats;
-  abilities?: string[];
-}
-
-export interface UnitStats {
-  hp: number;
-  attack: number;
-  defense: number;
-  speed: number;
-  damage: [number, number]; // min, max damage
-}
-
-export interface HeroData {
-  id: string;
-  name: string;
-  faction: string;
-  class: string;
-  startingStats: HeroStats;
-  skills: SkillData[];
-}
-
-export interface HeroStats {
-  attack: number;
-  defense: number;
-  spellPower: number;
-  knowledge: number;
-  movement: number;
-}
-
-export interface SkillData {
-  id: string;
-  name: string;
-  description: string;
-  maxLevel: number;
-}
-
-export function getFactionBuildings(factionId: string): BuildingData[] {
-  const faction = factions.find(f => f.id === factionId);
-  if (!faction) return [];
-
-  return faction.buildings
-    .map(buildingId => buildingDatabase.find(b => b.id === buildingId))
-    .filter((building): building is BuildingData => building !== undefined);
-}

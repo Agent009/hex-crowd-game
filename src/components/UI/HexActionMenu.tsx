@@ -12,10 +12,10 @@ import {
   Sparkles
 } from 'lucide-react';
 import {GameScene} from "../../game/GameEngine";
+import {getPhaserGame} from "../../game/phaserRef";
 
 interface HexActionMenuProps {
   onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting') => void;
-  onOpenTileInfo: () => void;
 }
 
 export const HexActionMenu: React.FC<HexActionMenuProps> = ({
@@ -151,8 +151,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
 
     const containerRect = gameContainer.getBoundingClientRect();
 
-    // Try to get the tile position directly from the Phaser game
-    const phaserGame = (window as { phaserGame?: Phaser.Game }).phaserGame;
+    const phaserGame = getPhaserGame();
     const gameScene = phaserGame?.scene?.getScene('GameScene') as GameScene | undefined;
 
     if (gameScene?.getTileScreenPosition) {

@@ -142,41 +142,30 @@ All null safety and runtime error issues have been fixed.
 
 ## Phase 5: Dead Code & Technical Debt Cleanup
 
-### 5.1 Commented-Out Code Blocks
-Remove all commented-out code to improve readability. Key locations:
-- `src/game/GameEngine.ts` ~lines 41-53 (preload assets), ~lines 427-442 (outline drawing)
-- `src/game/AnimationSystem.ts` ~lines 65-71, 107-114, 146-154 (disabled pooling)
-- `src/components/GameCanvas.tsx` ~lines 78-94 (alternative event listener setup)
-- `src/components/UI/PanelManager.tsx` ~lines 36-40, 46, 70-77, 80 (commented-out useEffect and console.log)
-- `src/components/UI/BuildingPanel.tsx` ~lines 116, 335, 345, 352 (commented console.log)
-- `src/components/UI/RoundPhaseOverlay.tsx` ~line 219 (commented console.log)
-- `src/store/gameSlice.ts` ~lines 701-706 (commented switch statement)
+### 5.1 Commented-Out Code Blocks - RESOLVED
+- **GameEngine.ts**: Removed 16-line commented-out left/right face outline drawing block.
+- **AnimationSystem.ts**: No commented-out pooling code found - was already clean.
+- **GameCanvas.tsx**: Removed 17-line commented-out event-listener scene initialization block.
+- **PanelManager.tsx**: File no longer exists - already removed.
+- **BuildingPanel.tsx**: File no longer exists - already removed.
+- **RoundPhaseOverlay.tsx**: Resolved in Phase 4.
+- **gameSlice.ts**: Removed commented switch statement + removed unused `const apIncrement = 2` variable.
 
-### 5.2 Unused Exports and Functions
-Remove or implement:
-- `src/data/gameData.ts`: `factions` array (one incomplete faction), `getFactionBuildings()` (never called), `FactionData`/`UnitData`/`HeroData`/`SkillData` interfaces (never used)
-- `src/data/harvestData.ts`: `HarvestSlot`/`HarvestGrid` class (never imported), `calculateItemValue()` (never called), `canCraftItem()` (never called)
-- `src/game/TextureFactory.ts` ~line 71-84: `ensureTextureExists()` (defined but never called)
-- `src/components/UI/TileInfo.tsx` ~line 29: `isPartiallyVisible` (hardcoded to false, never changes)
-- `src/components/UI/HexActionMenu.tsx` ~line 22: `onOpenTileInfo` prop (defined but never used)
+### 5.2 Unused Exports and Functions - RESOLVED
+- **gameData.ts**: Removed `factions` const, `FactionData`/`UnitData`/`UnitStats`/`HeroData`/`HeroStats`/`SkillData` interfaces, `getFactionBuildings()` function, and the now-unused `buildingsData` import line. These were all hero/faction system stubs (inactive feature).
+- **harvestData.ts**: `HarvestSlot`/`HarvestGrid`/`calculateItemValue`/`canCraftItem` are all actively used in `HarvestGrid.tsx` - no changes needed, original report was stale.
+- **TextureFactory.ts**: Removed `ensureTextureExists()` method and its JSDoc block.
+- **TileInfo.tsx**: Removed `isPartiallyVisible = false` variable and its conditional `opacity-75` usage.
+- **HexActionMenu.tsx**: Removed `onOpenTileInfo` from `HexActionMenuProps` interface.
 
-### 5.3 .ts Extension in Import Paths
-Non-standard `.ts` extensions in import paths may break production builds:
-- `src/store/gameSlice.ts` ~line 114: `"../utils/utils.ts"` -> `"../utils/utils"`
-- `src/store/buildingSystem.ts` ~line 3: `.ts` extension
-- `src/data/buildingsData.ts` ~line 3: `.ts` extension
-- `src/data/gameData.ts` ~line 4: `.ts` extension
-- `src/data/harvestData.ts` ~line 2: `.ts` extension
+### 5.3 .ts Extension in Import Paths - RESOLVED
+- All import paths already use extension-free paths. No changes needed.
 
-### 5.4 Global State Pollution (GameEngine.ts)
-- **File:** `src/game/GameEngine.ts` ~line 64
-- **Issue:** `(window as any).phaserGame = this.game` stores the game instance on the global window object.
-- **Fix:** Remove or replace with a proper reference management pattern.
+### 5.4 Global State Pollution (GameEngine.ts) - RESOLVED
+- **Fix Applied:** Created `src/game/phaserRef.ts` module with `setPhaserGame`/`getPhaserGame`/`clearPhaserGame` functions. Updated `GameEngine.ts` to call `setPhaserGame` on create and `clearPhaserGame` on cleanup. Updated `HexActionMenu.tsx` to call `getPhaserGame()` instead of reading from `window`.
 
-### 5.5 PanelManager Dead State
-- **File:** `src/components/UI/PanelManager.tsx` ~line 36-40
-- **Issue:** `screenSize` state is declared with `@ts-expect-error` and never used.
-- **Fix:** Remove the dead state declaration.
+### 5.5 PanelManager Dead State - RESOLVED
+- `PanelManager.tsx` no longer exists in the codebase - already removed in prior cleanup.
 
 ---
 

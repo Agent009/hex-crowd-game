@@ -700,21 +700,11 @@ const gameSlice = createSlice({
     },
 
     updatePhaseTimer: (state) => {
-      const apIncrement = 2;
       if (state.phaseTimer > 0) {
         state.phaseTimer -= 1;
       }
 
-      // Auto-advance phase when timer reaches 0
       if (state.phaseTimer <= 0) {
-        // Apply end-of-phase effects for the current phase
-        // switch (state.currentPhase) {
-        //   case 'round_start':
-        //     break;
-        //   default:
-        //     break;
-        // }
-
         const currentIndex = phaseOrder.indexOf(state.currentPhase);
         const nextIndex = (currentIndex + 1) % phaseOrder.length;
 

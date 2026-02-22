@@ -63,27 +63,6 @@ export class TextureFactory {
   }
 
   /**
-   * Ensure a texture exists, creating it if missing.
-   * @param scene - Phaser scene instance
-   * @param key - Texture key
-   * @param generator - Function to generate the texture
-   */
-  public static ensureTextureExists(
-    scene: Phaser.Scene,
-    key: string,
-    generator: (graphics: Phaser.GameObjects.Graphics) => void
-  ): void {
-    if (scene.textures.exists(key)) {
-      return;
-    }
-
-    const graphics = scene.add.graphics();
-    generator(graphics);
-    graphics.generateTexture(key, 32, 32); // Default size, override in generator if needed
-    graphics.destroy();
-  }
-
-  /**
    * Create all particle textures used by animation and particle systems.
    */
   private static createParticleTextures(scene: Phaser.Scene): void {

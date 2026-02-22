@@ -16,6 +16,7 @@ import { AtmosphericParticleSystem } from "./ParticleSystem";
 import { GameAnimationSystem } from "./AnimationSystem";
 import { TextureFactory } from "./TextureFactory";
 import { ParticleEmitterManager } from "./ParticleEmitterManager";
+import { setPhaserGame, clearPhaserGame } from "./phaserRef";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
@@ -49,7 +50,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // Make the game instance globally accessible for coordinate conversion
-    (window as { phaserGame?: Phaser.Game }).phaserGame = this.game;
+    setPhaserGame(this.game);
 
     if (isIsometricGrid) {
       // Adjust camera for better isometric viewing
@@ -444,23 +445,6 @@ export class GameScene extends Phaser.Scene {
     graphics.closePath();
     graphics.strokePath();
 
-    // Left face outline
-    // graphics.beginPath();
-    // graphics.moveTo(points[4].x, points[4].y);
-    // graphics.lineTo(points[5].x, points[5].y);
-    // graphics.lineTo(points[5].x, points[5].y + height);
-    // graphics.lineTo(points[4].x, points[4].y + height);
-    // graphics.closePath();
-    // graphics.strokePath();
-
-    // Right face outline
-    // graphics.beginPath();
-    // graphics.moveTo(points[3].x, points[3].y);
-    // graphics.lineTo(points[4].x, points[4].y);
-    // graphics.lineTo(points[4].x, points[4].y + height);
-    // graphics.lineTo(points[3].x, points[3].y + height);
-    // graphics.closePath();
-    // graphics.strokePath();
   }
 
   private renderGrid() {
@@ -672,6 +656,7 @@ export class GameScene extends Phaser.Scene {
     this.events.off("shutdown", this.cleanup, this);
 
     this.isInitialized = false;
+    clearPhaserGame();
   }
 
   shutdown() {

@@ -25,7 +25,6 @@ export const TileInfo: React.FC = () => {
 
   const { x, y } = cubeToPixel(tile.coords, DEFAULT_HEX_SIZE);
   const terrain = terrainData[tile.terrain];
-  const isPartiallyVisible = false; // No fog of war in party game
   const isActive = activeTiles.includes(key);
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
 
@@ -36,9 +35,7 @@ export const TileInfo: React.FC = () => {
   };
 
   return (
-    <div className={`absolute top-[8rem] left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-30 ${
-      isPartiallyVisible ? 'opacity-75' : ''
-    }`}>
+    <div className="absolute top-[8rem] left-4 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-600 min-w-64 z-30">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-semibold flex items-center">
           <MapPin className="w-4 h-4 mr-2 text-blue-400" />

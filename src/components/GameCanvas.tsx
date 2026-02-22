@@ -83,25 +83,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
       };
 
       checkForScene();
-
-      // Wait for scene to be ready
-      // gameRef.current.events.once('ready', () => {
-      // Wait for scene to be fully started
-      // gameRef.current.scene.getScene('GameScene').events.once('start', () => {
-      // Wait for scene to be fully created and started
-      // gameRef.current.scene.getScene('GameScene').events.once('create', () => {
-      //   sceneRef.current = gameRef.current?.scene.getScene('GameScene') as GameScene;
-      //
-      //   if (sceneRef.current) {
-      //     // Initialize scene with current game state
-      //     sceneRef.current.initializeScene({
-      //       tiles,
-      //       onTileClick: handleTileClick,
-      //       onTileHover: handleTileHover,
-      //       showFogOfWar
-      //     });
-      //   }
-      // });
     }
 
     return () => {
