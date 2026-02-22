@@ -184,10 +184,10 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     }
 
     if (itemId === 'terraform') {
-      dispatch(applyTerraformItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      dispatch(applyTerraformItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
       showFlash('Terraform used! 3 inactive tiles are now active.', 'success');
     } else if (itemId === 'leech') {
-      dispatch(applyLeechItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      dispatch(applyLeechItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
       showFlash('Leech used! 2 active tiles are now inactive.', 'success');
     } else {
       dispatch(activateItemEffect({ playerId: currentPlayer.id, itemId }));
@@ -279,7 +279,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
             <div key={terrainType} className={`rounded-lg p-3 ${canHarvestFromTerrain ? 'bg-slate-700' : 'bg-slate-800 opacity-60'}`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-2">
-                  {TerrainIcon && <TerrainIcon className="w-4 h-4" style={{ color: terrain.color }} />}
+                  {TerrainIcon && <span style={{ color: terrain.color }}><TerrainIcon className="w-4 h-4" /></span>}
                   <span className="text-white font-medium text-sm">{terrain.name}</span>
                   {!canHarvestFromTerrain && (
                     <Lock className="w-3 h-3 text-slate-500" />
