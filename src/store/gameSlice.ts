@@ -745,7 +745,7 @@ const gameSlice = createSlice({
       }
     },
 
-    useItem: (state, action: PayloadAction<{
+    activateItemEffect: (state, action: PayloadAction<{
       playerId: string;
       itemId: string;
     }>) => {
@@ -876,7 +876,7 @@ export const {
   setCurrentPlayer,
   harvestFromTile,
   craftItem,
-  useItem,
+  activateItemEffect,
   updateTeamScore,
 } = gameSlice.actions;
 

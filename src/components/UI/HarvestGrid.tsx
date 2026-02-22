@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
-import { harvestFromTile, craftItem, useItem } from '../../store/gameSlice';
-import { useTerraformItem, useLeechItem } from '../../store/itemThunks';
+import { harvestFromTile, craftItem, activateItemEffect } from '../../store/gameSlice';
+import { applyTerraformItem, applyLeechItem } from '../../store/itemThunks';
 import {
   HarvestGrid as HarvestGridClass,
   ResourceData,
   resourceDatabase,
   itemDatabase,
-  calculateItemValue,
   canCraftItem
 } from '../../data/harvestData';
 import { terrainData, TerrainType } from '../../data/gameData';
@@ -185,13 +184,13 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     }
 
     if (itemId === 'terraform') {
-      dispatch(useTerraformItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      dispatch(applyTerraformItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
       showFlash('Terraform used! 3 inactive tiles are now active.', 'success');
     } else if (itemId === 'leech') {
-      dispatch(useLeechItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
+      dispatch(applyLeechItem(currentPlayer.id) as Parameters<typeof dispatch>[0]);
       showFlash('Leech used! 2 active tiles are now inactive.', 'success');
     } else {
-      dispatch(useItem({ playerId: currentPlayer.id, itemId }));
+      dispatch(activateItemEffect({ playerId: currentPlayer.id, itemId }));
       if (itemId === 'rejuvenate') showFlash('Rejuvenate used! +3 HP.', 'success');
       if (itemId === 'armageddon') showFlash('Armageddon unleashed! All other players take 2 damage.', 'success');
     }

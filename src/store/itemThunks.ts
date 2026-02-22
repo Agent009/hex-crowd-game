@@ -1,9 +1,9 @@
 import { AppDispatch, RootState } from './store';
-import { useItem } from './gameSlice';
+import { activateItemEffect } from './gameSlice';
 import { activateTile, deactivateTile } from './worldSlice';
 import { coordsToKey } from '../utils/hexGrid';
 
-export const useTerraformItem = (playerId: string) =>
+export const applyTerraformItem = (playerId: string) =>
   (dispatch: AppDispatch, getState: () => RootState) => {
     const state = getState();
     const tiles = state.world.tiles;
@@ -14,11 +14,11 @@ export const useTerraformItem = (playerId: string) =>
     const shuffled = [...inactiveTileKeys].sort(() => Math.random() - 0.5);
     const toActivate = shuffled.slice(0, 3);
 
-    dispatch(useItem({ playerId, itemId: 'terraform' }));
+    dispatch(activateItemEffect({ playerId, itemId: 'terraform' }));
     toActivate.forEach(tileKey => dispatch(activateTile(tileKey)));
   };
 
-export const useLeechItem = (playerId: string) =>
+export const applyLeechItem = (playerId: string) =>
   (dispatch: AppDispatch, getState: () => RootState) => {
     const state = getState();
     const player = state.game.players.find(p => p.id === playerId);
@@ -32,6 +32,6 @@ export const useLeechItem = (playerId: string) =>
     const shuffled = [...eligibleTiles].sort(() => Math.random() - 0.5);
     const toDeactivate = shuffled.slice(0, 2);
 
-    dispatch(useItem({ playerId, itemId: 'leech' }));
+    dispatch(activateItemEffect({ playerId, itemId: 'leech' }));
     toDeactivate.forEach(tileKey => dispatch(deactivateTile(tileKey)));
   };
