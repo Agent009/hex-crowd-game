@@ -30,7 +30,8 @@ import {
   TestTube,
   Heart,
   Zap,
-  X
+  X,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -52,7 +53,7 @@ export const PartyGameHUD: React.FC = () => {
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
   const [showTestControls, setShowTestControls] = useState(false);
   const [showTeamScores, setShowTeamScores] = useState(false);
-  const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting'>('resources');
+  const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting' | 'trade'>('resources');
 
   // Get current player stats
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
@@ -86,7 +87,7 @@ export const PartyGameHUD: React.FC = () => {
     dispatch(setCurrentPlayer({ playerId }));
   };
 
-  const handleOpenHarvestGrid = (tab: 'resources' | 'items' | 'crafting') => {
+  const handleOpenHarvestGrid = (tab: 'resources' | 'items' | 'crafting' | 'trade') => {
     setHarvestGridTab(tab);
     setShowHarvestGrid(true);
   };
@@ -226,13 +227,27 @@ export const PartyGameHUD: React.FC = () => {
           <button
             onClick={() => setShowHarvestGrid(!showHarvestGrid)}
             className={`p-2 rounded-lg transition-colors ${
-              showHarvestGrid 
-                ? 'bg-green-600 text-white' 
+              showHarvestGrid
+                ? 'bg-green-600 text-white'
                 : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
             }`}
             title="Toggle Harvest Grid"
           >
             <Package className="w-5 h-5" />
+          </button>
+
+          <button
+            onClick={() => handleOpenHarvestGrid('trade')}
+            className={`p-2 rounded-lg transition-colors ${
+              currentPhase === 'bartering'
+                ? 'bg-teal-600 text-white animate-pulse'
+                : showHarvestGrid && harvestGridTab === 'trade'
+                  ? 'bg-teal-700 text-white'
+                  : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+            }`}
+            title="Open Trade Panel"
+          >
+            <ArrowLeftRight className="w-5 h-5" />
           </button>
 
           {isTestMode && (

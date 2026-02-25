@@ -24,7 +24,7 @@ export interface PlayerStats {
 export interface ActivityEvent {
   id: string;
   timestamp: number;
-  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect';
+  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect' | 'trade';
   subtype?: 'ap_renewal' | 'terrain_effect' | 'disaster';
   playerId?: string;
   playerName?: string;
@@ -58,6 +58,7 @@ export interface PlayerState {
   gameTimer: number;
   roundNumber: number;
   activityEvents: ActivityEvent[];
+  tradeProposals: TradeProposal[];
 }
 
 export interface PhaseState {
@@ -65,6 +66,16 @@ export interface PhaseState {
   phaseStartTime: number;
   phaseTimer: number;
   showPhaseOverlay: boolean;
+}
+
+export interface TradeProposal {
+  id: string;
+  fromPlayerId: string;
+  toPlayerId: string;
+  offeredResources: { [resourceId: string]: number };
+  requestedResources: { [resourceId: string]: number };
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  createdAt: number;
 }
 
 export interface UIState {

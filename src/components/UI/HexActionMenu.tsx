@@ -17,7 +17,7 @@ import {GameScene} from "../../game/GameEngine";
 import {getPhaserGame} from "../../game/phaserRef";
 
 interface HexActionMenuProps {
-  onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting') => void;
+  onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting' | 'trade') => void;
 }
 
 export const HexActionMenu: React.FC<HexActionMenuProps> = ({

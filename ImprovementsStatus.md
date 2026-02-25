@@ -16,10 +16,14 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ## Phase M: Game Mechanics
 
-### M1 — Bartering / Trading Phase — OPEN
-- **Status:** Not started
-- **Blocker:** None (standalone feature)
-- **Notes:** Phase is scheduled and overlay text exists. Requires trade proposal UI, player-to-player exchange logic, and a reducer case for `'bartering'` in `updatePhaseTimer`.
+### M1 — Bartering / Trading Phase — COMPLETE
+- **Status:** Done
+- **Notes:** Full trade system implemented end-to-end.
+  - `TradeProposal` type added to `types.ts`; `tradeProposals: []` added to Redux state.
+  - Four new reducers in `gameSlice.ts`: `proposeTrade` (validates sender has offered resources, enforces bartering-phase-only), `acceptTrade` (atomic resource swap, validates both parties still have required resources), `rejectTrade`, `cancelTrade`.
+  - `BarteringPanel` component (`src/components/UI/BarteringPanel.tsx`): resource counter UI for building an offer/request, player selector, live proposal cards with Accept/Reject/Cancel actions, inbound proposal alert badge.
+  - Trade tab added to `HarvestGrid` as a 4th tab (teal icon). The Trade button in `PartyGameHUD` pulses amber during bartering phase to draw attention.
+  - Trade history persists within the session (proposals visible to both sender and receiver with status labels).
 
 ### M2 — Combat System — OPEN
 - **Status:** Not started
@@ -162,12 +166,12 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 | Phase | Total Items | OPEN | IN PROGRESS | COMPLETE |
 |-------|------------|------|-------------|---------|
 | C — Dead Code | 1 | 0 | 0 | 1 |
-| M — Game Mechanics | 4 | 4 | 0 | 0 |
+| M — Game Mechanics | 4 | 3 | 0 | 1 |
 | I — Item System | 7 | 5 | 0 | 2 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
 | P — Infrastructure | 3 | 3 | 0 | 0 |
-| **TOTAL** | **26** | **23** | **0** | **3** |
+| **TOTAL** | **26** | **22** | **0** | **4** |
 
 ---
 

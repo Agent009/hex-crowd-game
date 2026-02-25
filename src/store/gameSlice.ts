@@ -21,9 +21,10 @@ import {
   ActivityEvent,
   PlayerState,
   PhaseState,
+  TradeProposal,
 } from './types';
 
-export type { GamePhase, PlayerStats, ActivityEvent };
+export type { GamePhase, PlayerStats, ActivityEvent, TradeProposal };
 
 export const phaseOrder: GamePhase[] = [
   'round_start',
@@ -104,6 +105,7 @@ const initialState: GameState = {
   gameTimer: 0,
   roundNumber: 1,
   activityEvents: [],
+  tradeProposals: [],
 
   currentPhase: 'round_start',
   phaseStartTime: 0,
@@ -915,6 +917,141 @@ const gameSlice = createSlice({
 
       state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
     },
+
+    proposeTrade: (state, action: PayloadAction<{
+      fromPlayerId: string;
+      toPlayerId: string;
+      offeredResources: { [resourceId: string]: number };
+      requestedResources: { [resourceId: string]: number };
+    }>) => {
+      const { fromPlayerId, toPlayerId, offeredResources, requestedResources } = action.payload;
+      if (state.currentPhase !== 'bartering') return;
+
+      const fromPlayer = state.players.find(p => p.id === fromPlayerId);
+      const toPlayer = state.players.find(p => p.id === toPlayerId);
+      const fromStats = state.playerStats[fromPlayerId];
+      if (!fromPlayer || !toPlayer || !fromStats) return;
+
+      for (const [resourceId, amount] of Object.entries(offeredResources)) {
+        if ((fromStats.resources[resourceId] || 0) < amount) return;
+      }
+
+      const proposal: TradeProposal = {
+        id: `trade_${Date.now()}_${Math.random()}`,
+        fromPlayerId,
+        toPlayerId,
+        offeredResources,
+        requestedResources,
+        status: 'pending',
+        createdAt: Date.now(),
+      };
+
+      state.tradeProposals.push(proposal);
+
+      const offerSummary = Object.entries(offeredResources)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(', ');
+      const requestSummary = Object.entries(requestedResources)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(', ');
+
+      state.activityEvents.unshift({
+        id: `${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        type: 'trade',
+        playerId: fromPlayerId,
+        playerName: fromPlayer.name,
+        playerNumber: fromPlayer.number,
+        message: `${fromPlayer.name} proposed a trade to ${toPlayer.name}: offer [${offerSummary}] for [${requestSummary}]`,
+        details: {}
+      });
+    },
+
+    acceptTrade: (state, action: PayloadAction<{ tradeId: string; acceptingPlayerId: string }>) => {
+      const { tradeId, acceptingPlayerId } = action.payload;
+      if (state.currentPhase !== 'bartering') return;
+
+      const proposal = state.tradeProposals.find(t => t.id === tradeId);
+      if (!proposal || proposal.status !== 'pending') return;
+      if (proposal.toPlayerId !== acceptingPlayerId) return;
+
+      const fromStats = state.playerStats[proposal.fromPlayerId];
+      const toStats = state.playerStats[proposal.toPlayerId];
+      if (!fromStats || !toStats) return;
+
+      for (const [resourceId, amount] of Object.entries(proposal.offeredResources)) {
+        if ((fromStats.resources[resourceId] || 0) < amount) {
+          proposal.status = 'cancelled';
+          return;
+        }
+      }
+      for (const [resourceId, amount] of Object.entries(proposal.requestedResources)) {
+        if ((toStats.resources[resourceId] || 0) < amount) {
+          proposal.status = 'cancelled';
+          return;
+        }
+      }
+
+      for (const [resourceId, amount] of Object.entries(proposal.offeredResources)) {
+        fromStats.resources[resourceId] = (fromStats.resources[resourceId] || 0) - amount;
+        toStats.resources[resourceId] = (toStats.resources[resourceId] || 0) + amount;
+      }
+      for (const [resourceId, amount] of Object.entries(proposal.requestedResources)) {
+        toStats.resources[resourceId] = (toStats.resources[resourceId] || 0) - amount;
+        fromStats.resources[resourceId] = (fromStats.resources[resourceId] || 0) + amount;
+      }
+
+      proposal.status = 'accepted';
+
+      const fromPlayer = state.players.find(p => p.id === proposal.fromPlayerId);
+      const toPlayer = state.players.find(p => p.id === proposal.toPlayerId);
+
+      state.activityEvents.unshift({
+        id: `${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        type: 'trade',
+        playerId: acceptingPlayerId,
+        playerName: toPlayer?.name,
+        playerNumber: toPlayer?.number,
+        message: `${toPlayer?.name} accepted ${fromPlayer?.name}'s trade proposal`,
+        details: {}
+      });
+      state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
+    },
+
+    rejectTrade: (state, action: PayloadAction<{ tradeId: string; rejectingPlayerId: string }>) => {
+      const { tradeId, rejectingPlayerId } = action.payload;
+      const proposal = state.tradeProposals.find(t => t.id === tradeId);
+      if (!proposal || proposal.status !== 'pending') return;
+      if (proposal.toPlayerId !== rejectingPlayerId) return;
+
+      proposal.status = 'rejected';
+
+      const fromPlayer = state.players.find(p => p.id === proposal.fromPlayerId);
+      const toPlayer = state.players.find(p => p.id === proposal.toPlayerId);
+
+      state.activityEvents.unshift({
+        id: `${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        type: 'trade',
+        playerId: rejectingPlayerId,
+        playerName: toPlayer?.name,
+        playerNumber: toPlayer?.number,
+        message: `${toPlayer?.name} rejected ${fromPlayer?.name}'s trade proposal`,
+        details: {}
+      });
+    },
+
+    cancelTrade: (state, action: PayloadAction<{ tradeId: string; cancellingPlayerId: string }>) => {
+      const { tradeId, cancellingPlayerId } = action.payload;
+      const proposal = state.tradeProposals.find(t => t.id === tradeId);
+      if (!proposal || proposal.status !== 'pending') return;
+      if (proposal.fromPlayerId !== cancellingPlayerId) return;
+
+      proposal.status = 'cancelled';
+    },
   },
 });
 
@@ -935,6 +1072,10 @@ export const {
   craftItem,
   activateItemEffect,
   updateTeamScore,
+  proposeTrade,
+  acceptTrade,
+  rejectTrade,
+  cancelTrade,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

@@ -23,9 +23,10 @@ import {
   Lock
 } from 'lucide-react';
 import {isCraftable} from "../../utils/utils";
-import { X } from 'lucide-react';
+import { X, ArrowLeftRight } from 'lucide-react';
+import { BarteringPanel } from './BarteringPanel';
 
-type TabType = 'resources' | 'items' | 'crafting';
+type TabType = 'resources' | 'items' | 'crafting' | 'trade';
 
 interface HarvestGridProps {
   initialTab?: TabType;
@@ -226,7 +227,8 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
   const tabs = [
     { id: 'resources' as TabType, icon: Package, label: 'Resources', color: 'text-green-400' },
     { id: 'items' as TabType, icon: Sparkles, label: 'Items', color: 'text-purple-400' },
-    { id: 'crafting' as TabType, icon: Hammer, label: 'Crafting', color: 'text-orange-400' }
+    { id: 'crafting' as TabType, icon: Hammer, label: 'Crafting', color: 'text-orange-400' },
+    { id: 'trade' as TabType, icon: ArrowLeftRight, label: 'Trade', color: 'text-teal-400' },
   ];
 
   const renderTabContent = () => {
@@ -237,6 +239,8 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
         return renderItemsTab();
       case 'crafting':
         return renderCraftingTab();
+      case 'trade':
+        return <BarteringPanel />;
       default:
         return null;
     }
@@ -553,7 +557,8 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
               {activeTab === 'resources' && 'Resources: 1 AP • Items: 3 AP'}
               {activeTab === 'items' && 'Items cost 3 AP each'}
               {activeTab === 'crafting' && 'Craft items from resources'}
-              {currentPhase !== 'interaction' && ' • ACTIONS RESTRICTED'}
+              {activeTab === 'trade' && 'Bartering Phase only'}
+              {activeTab !== 'trade' && currentPhase !== 'interaction' && ' • ACTIONS RESTRICTED'}
             </div>
           </div>
 
