@@ -1052,6 +1052,10 @@ const gameSlice = createSlice({
 
       proposal.status = 'cancelled';
     },
+
+    syncGameState: (_state, action: PayloadAction<GameState>) => {
+      return action.payload;
+    },
   },
 });
 
@@ -1076,6 +1080,7 @@ export const {
   acceptTrade,
   rejectTrade,
   cancelTrade,
+  syncGameState,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

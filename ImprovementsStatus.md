@@ -144,10 +144,19 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ## Phase P: Multiplayer & Infrastructure
 
-### P1 — Real-Time Multiplayer — OPEN
-- **Status:** Not started
-- **Blocker:** None (foundational)
-- **Notes:** Largest scope item. Requires Supabase Realtime channels or WebSocket integration. All game state mutations need to sync across clients.
+### P1 — Real-Time Multiplayer — COMPLETE
+- **Status:** Done
+- **Notes:** Full real-time multiplayer using Supabase Realtime broadcast channels. Host-authoritative architecture.
+  - **Database**: `game_sessions` table with RLS, stores session code, host ID, player count, game mode.
+  - **Session flow**: Main menu with Create Online / Join Online / Local Game options. Host creates session, gets 6-char code. Others join via code.
+  - **RealtimeService** (`src/services/RealtimeService.ts`): Singleton service managing Supabase Realtime channel. Host processes all game actions and broadcasts state to clients every second. Clients send actions via broadcast, host validates and applies them.
+  - **State sync**: `syncGameState` and `syncWorldState` reducers replace full client state with host-authoritative state on every tick.
+  - **Host migration**: If host disconnects, the next connected player (sorted by ID) automatically becomes host and starts the game loop.
+  - **Session slice** (`src/store/sessionSlice.ts`): Redux state for sessionId, sessionCode, hostPlayerId, localPlayerId, connection status, connected player list.
+  - **useMultiplayer hook** (`src/hooks/useMultiplayer.ts`): Convenience hook exposing all multiplayer actions (sendMove, sendHarvest, sendCraft, etc.).
+  - **GameLobby rewrite**: Menu screen with 3 options, create/join forms with loading states, session code display with copy button, connection status indicator.
+  - **PartyGameHUD updates**: Host indicator badge, multiplayer-aware phase timer (only host runs the loop), auto-set currentPlayer to local player.
+  - **Local mode preserved**: Local Game mode works exactly as before with no network dependency.
 
 ### P2 — Game Session Persistence — OPEN
 - **Status:** Not started
@@ -170,8 +179,8 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 | I — Item System | 7 | 5 | 0 | 2 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
-| P — Infrastructure | 3 | 3 | 0 | 0 |
-| **TOTAL** | **26** | **22** | **0** | **4** |
+| P — Infrastructure | 3 | 2 | 0 | 1 |
+| **TOTAL** | **26** | **21** | **0** | **5** |
 
 ---
 

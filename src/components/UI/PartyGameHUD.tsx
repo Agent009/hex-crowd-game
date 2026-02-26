@@ -12,6 +12,7 @@ import {
 } from '../../store/gameSlice';
 import { toggleGrid, togglePlayerNumbers } from '../../store/uiSlice';
 import { isTestMode } from '../../data/gameData';
+import { useMultiplayer } from '../../hooks/useMultiplayer';
 import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
 import { NotificationSystem } from './NotificationSystem';
@@ -31,7 +32,8 @@ import {
   Heart,
   Zap,
   X,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Wifi,
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -48,6 +50,7 @@ export const PartyGameHUD: React.FC = () => {
   } = useSelector((state: RootState) => state.game);
   const { showGrid, showPlayerNumbers } = useSelector((state: RootState) => state.ui);
   const { tiles } = useSelector((state: RootState) => state.world);
+  const { isMultiplayer, isHost, localPlayerId, sendForceNextPhase, sendEndGame } = useMultiplayer();
 
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
@@ -55,11 +58,10 @@ export const PartyGameHUD: React.FC = () => {
   const [showTeamScores, setShowTeamScores] = useState(false);
   const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting' | 'trade'>('resources');
 
-  // Get current player stats
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
 
-  // Phase timer effect
   useEffect(() => {
+    if (isMultiplayer) return;
     if (gameMode === 'playing' && !isGamePaused) {
       const interval = setInterval(() => {
         dispatch(updatePhaseTimer({ tiles }));
@@ -67,7 +69,16 @@ export const PartyGameHUD: React.FC = () => {
 
       return () => clearInterval(interval);
     }
-  }, [gameMode, isGamePaused, dispatch, tiles]);
+  }, [gameMode, isGamePaused, dispatch, tiles, isMultiplayer]);
+
+  useEffect(() => {
+    if (isMultiplayer && localPlayerId && gameMode === 'playing') {
+      const myPlayer = players.find(p => p.id === localPlayerId || p.name === localPlayerId);
+      if (myPlayer && currentPlayer?.id !== myPlayer.id) {
+        dispatch(setCurrentPlayer({ playerId: myPlayer.id }));
+      }
+    }
+  }, [isMultiplayer, localPlayerId, players, currentPlayer, dispatch, gameMode]);
 
   const formatPhaseTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -76,7 +87,11 @@ export const PartyGameHUD: React.FC = () => {
   };
 
   const handleEndGame = () => {
-    dispatch(endGame());
+    if (isMultiplayer) {
+      sendEndGame();
+    } else {
+      dispatch(endGame());
+    }
   };
 
   const togglePause = () => {
@@ -155,6 +170,13 @@ export const PartyGameHUD: React.FC = () => {
               <div className="text-slate-400 text-xs">Players</div>
             </div>
           </div>
+
+          {isMultiplayer && (
+            <div className="flex items-center space-x-1">
+              <Wifi className="w-4 h-4 text-green-400" />
+              {isHost && <span className="text-amber-400 text-xs font-semibold">HOST</span>}
+            </div>
+          )}
         </div>
 
         {/* Center - Player Status */}
@@ -418,8 +440,11 @@ export const PartyGameHUD: React.FC = () => {
 
           {isTestMode && (
             <button
-              onClick={() => dispatch(forceNextPhase())}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+              onClick={() => {
+                if (isMultiplayer) sendForceNextPhase();
+                else dispatch(forceNextPhase());
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
             >
               Next Phase
             </button>

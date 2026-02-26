@@ -76,8 +76,12 @@ const worldSlice = createSlice({
         state.tiles[tileKey].players = players;
       }
     },
+
+    syncWorldState: (_state, action: PayloadAction<WorldState>) => {
+      return action.payload;
+    },
   },
 });
 
-export const { selectTile, deselectTile, activateTile, deactivateTile, setTilePlayers } = worldSlice.actions;
+export const { selectTile, deselectTile, activateTile, deactivateTile, setTilePlayers, syncWorldState } = worldSlice.actions;
 export default worldSlice.reducer;

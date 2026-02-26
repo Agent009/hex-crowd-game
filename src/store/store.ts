@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import gameReducer from './gameSlice';
 import worldReducer from './worldSlice';
 import uiReducer from './uiSlice';
+import sessionReducer from './sessionSlice';
 import { listenerMiddleware } from './listenerMiddleware';
 
 export const store = configureStore({
@@ -9,6 +10,7 @@ export const store = configureStore({
     game: gameReducer,
     world: worldReducer,
     ui: uiReducer,
+    session: sessionReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().prepend(listenerMiddleware.middleware),
