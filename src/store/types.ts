@@ -24,7 +24,7 @@ export interface PlayerStats {
 export interface ActivityEvent {
   id: string;
   timestamp: number;
-  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect' | 'trade';
+  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect' | 'trade' | 'victory';
   subtype?: 'ap_renewal' | 'terrain_effect' | 'disaster';
   playerId?: string;
   playerName?: string;
@@ -49,6 +49,16 @@ export interface WorldState {
   activeTiles: string[];
 }
 
+export interface VictoryResult {
+  winnerId: string | null;
+  winnerName: string | null;
+  winnerTeamId: string | null;
+  winnerTeamName: string | null;
+  isTeamVictory: boolean;
+  roundNumber: number;
+  survivingPlayers: string[];
+}
+
 export interface PlayerState {
   players: Player[];
   teams: Team[];
@@ -60,6 +70,7 @@ export interface PlayerState {
   activityEvents: ActivityEvent[];
   tradeProposals: TradeProposal[];
   globalItemQuantities: { [itemId: string]: number };
+  victoryResult: VictoryResult | null;
 }
 
 export interface PhaseState {

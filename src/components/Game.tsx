@@ -8,6 +8,7 @@ import { GameLobby } from './UI/GameLobby';
 import { PartyGameHUD } from './UI/PartyGameHUD';
 import { TileInfo } from './UI/TileInfo';
 import { BoltLogo } from './UI/BoltLogo';
+import { VictoryScreen } from './UI/VictoryScreen';
 
 const GameContent: React.FC = () => {
   const { gameMode } = useSelector((state: RootState) => state.game);
@@ -27,7 +28,10 @@ const GameContent: React.FC = () => {
       {/* UI Overlays */}
       <PartyGameHUD />
       <TileInfo />
-      
+
+      {/* Victory Screen */}
+      {gameMode === 'ended' && <VictoryScreen />}
+
       {/* Loading Screen */}
       <div className="absolute inset-0 bg-slate-900 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-1000">
         <div className="text-center">

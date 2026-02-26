@@ -22,9 +22,10 @@ import {
   PlayerState,
   PhaseState,
   TradeProposal,
+  VictoryResult,
 } from './types';
 
-export type { GamePhase, PlayerStats, ActivityEvent, TradeProposal };
+export type { GamePhase, PlayerStats, ActivityEvent, TradeProposal, VictoryResult };
 
 export const phaseOrder: GamePhase[] = [
   'round_start',
@@ -115,6 +116,7 @@ const initialState: GameState = {
   activityEvents: [],
   tradeProposals: [],
   globalItemQuantities: buildInitialItemQuantities(),
+  victoryResult: null,
 
   currentPhase: 'round_start',
   phaseStartTime: 0,
@@ -348,6 +350,64 @@ const removeEliminatedPlayers = (
       : 'No players were eliminated',
     details: {}
   });
+
+  checkVictoryConditions(state);
+};
+
+const checkVictoryConditions = (state: GameState) => {
+  if (state.players.length === 0) return;
+
+  const teamsWithActivePlayers = state.teams.filter(team =>
+    team.playerIds.length > 0 &&
+    team.playerIds.some(id => state.players.find(p => p.id === id))
+  );
+
+  let victory: VictoryResult | null = null;
+
+  if (state.players.length === 1) {
+    const winner = state.players[0];
+    const winnerTeam = state.teams.find(t => t.id === winner.teamId);
+    victory = {
+      winnerId: winner.id,
+      winnerName: winner.name,
+      winnerTeamId: winnerTeam?.id ?? null,
+      winnerTeamName: winnerTeam?.name ?? null,
+      isTeamVictory: false,
+      roundNumber: state.roundNumber,
+      survivingPlayers: [winner.name],
+    };
+  } else if (teamsWithActivePlayers.length === 1) {
+    const winningTeam = teamsWithActivePlayers[0];
+    const survivingPlayers = state.players
+      .filter(p => p.teamId === winningTeam.id)
+      .map(p => p.name);
+    victory = {
+      winnerId: null,
+      winnerName: null,
+      winnerTeamId: winningTeam.id,
+      winnerTeamName: winningTeam.name,
+      isTeamVictory: true,
+      roundNumber: state.roundNumber,
+      survivingPlayers,
+    };
+  }
+
+  if (victory) {
+    state.victoryResult = victory;
+    state.gameMode = 'ended';
+
+    const winnerLabel = victory.isTeamVictory
+      ? `${victory.winnerTeamName} wins!`
+      : `${victory.winnerName} wins!`;
+
+    state.activityEvents.unshift({
+      id: `${Date.now()}_${Math.random()}`,
+      timestamp: Date.now(),
+      type: 'victory',
+      message: `Victory! ${winnerLabel} All other players have been eliminated.`,
+      details: {}
+    });
+  }
 };
 
 const advanceToNextRound = (state: GameState) => {
@@ -1068,6 +1128,14 @@ const gameSlice = createSlice({
     syncGameState: (_state, action: PayloadAction<GameState>) => {
       return action.payload;
     },
+
+    returnToLobby: () => {
+      return {
+        ...initialState,
+        teams: generateTeams(),
+        globalItemQuantities: buildInitialItemQuantities(),
+      };
+    },
   },
 });
 
@@ -1093,6 +1161,7 @@ export const {
   rejectTrade,
   cancelTrade,
   syncGameState,
+  returnToLobby,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;
