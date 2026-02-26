@@ -168,10 +168,16 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
   - **Join in-progress**: Players joining an in-progress game receive the persisted state immediately.
   - **useMultiplayer hook**: Added `reconnectSession` and `getActiveSession` methods.
 
-### P3 — Player Authentication — OPEN
-- **Status:** Not started
-- **Blocker:** P1
-- **Notes:** Supabase Auth email/password. Player identity persists across sessions. Stats tied to account.
+### P3 — Player Authentication — COMPLETE
+- **Status:** Done
+- **Notes:** Full Supabase Auth implementation with email/password.
+  - **Redux slice**: `authSlice.ts` stores user info (id, email, displayName, createdAt), loading state, and errors.
+  - **AuthService**: Singleton service wrapping Supabase Auth with `signUp`, `signIn`, `signOut`, `resetPassword` methods. Initializes on app load and listens to auth state changes.
+  - **useAuth hook**: Convenience hook exposing auth state and actions.
+  - **Login/Signup UI**: New views in GameLobby for sign in and sign up forms with email, password, and display name fields.
+  - **User profile**: When logged in, user profile (display name + email) appears in top-right of main menu with sign out button.
+  - **Auto-fill name**: When authenticated, player name field auto-fills with user's display name.
+  - **Guest play**: Users can still play without signing in - auth is optional.
 
 ---
 
@@ -184,8 +190,8 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 | I — Item System | 7 | 5 | 0 | 2 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
-| P — Infrastructure | 3 | 1 | 0 | 2 |
-| **TOTAL** | **26** | **20** | **0** | **6** |
+| P — Infrastructure | 3 | 0 | 0 | 3 |
+| **TOTAL** | **26** | **19** | **0** | **7** |
 
 ---
 

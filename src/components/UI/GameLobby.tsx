@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import { joinGame, leaveGame, togglePlayerReady, startGame } from '../../store/gameSlice';
 import { requiredTeams, requiredPlayersPerTeam, isTestMode } from '../../data/gameData';
 import { useMultiplayer } from '../../hooks/useMultiplayer';
+import { useAuth } from '../../hooks/useAuth';
+import { authService } from '../../services/AuthService';
 import {
   Users,
   Play,
@@ -22,9 +24,13 @@ import {
   Loader2,
   Globe,
   RefreshCw,
+  LogOut,
+  User,
+  Mail,
+  Lock,
 } from 'lucide-react';
 
-type LobbyView = 'menu' | 'creating' | 'joining' | 'reconnecting' | 'session';
+type LobbyView = 'menu' | 'creating' | 'joining' | 'reconnecting' | 'session' | 'login' | 'signup';
 
 export const GameLobby: React.FC = () => {
   const dispatch = useDispatch();
@@ -43,6 +49,17 @@ export const GameLobby: React.FC = () => {
     sendStart,
   } = useMultiplayer();
 
+  const {
+    user,
+    isAuthenticated,
+    isInitialized: authInitialized,
+    isLoading: authLoading,
+    error: authError,
+    signUp,
+    signIn,
+    signOut,
+  } = useAuth();
+
   const [lobbyView, setLobbyView] = useState<LobbyView>('menu');
   const [playerName, setPlayerName] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -54,6 +71,20 @@ export const GameLobby: React.FC = () => {
   const [reconnectCode, setReconnectCode] = useState('');
   const [sessionInfo, setSessionInfo] = useState<{ gameMode: string; playerCount: number; hasState: boolean } | null>(null);
   const [checkingSession, setCheckingSession] = useState(false);
+
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+
+  useEffect(() => {
+    authService.initialize();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && user?.displayName) {
+      setPlayerName(user.displayName);
+    }
+  }, [isAuthenticated, user]);
 
   const handleCreateSession = async () => {
     if (!playerName.trim()) return;
@@ -91,6 +122,32 @@ export const GameLobby: React.FC = () => {
     if (result?.reconnected) {
       setLobbyView('session');
     }
+  };
+
+  const handleSignIn = async () => {
+    if (!authEmail.trim() || !authPassword.trim()) return;
+    const result = await signIn(authEmail.trim(), authPassword.trim());
+    if (result.success) {
+      setLobbyView('menu');
+      setAuthEmail('');
+      setAuthPassword('');
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!authEmail.trim() || !authPassword.trim() || !authDisplayName.trim()) return;
+    const result = await signUp(authEmail.trim(), authPassword.trim(), authDisplayName.trim());
+    if (result.success) {
+      setLobbyView('menu');
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthDisplayName('');
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setPlayerName('');
   };
 
   const handleCopyCode = () => {
@@ -164,6 +221,35 @@ export const GameLobby: React.FC = () => {
     return (
       <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
         <div className="max-w-lg w-full mx-6">
+          {isAuthenticated && user ? (
+            <div className="absolute top-4 right-4 flex items-center space-x-3 bg-slate-800 rounded-lg px-4 py-2 border border-slate-700">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="text-sm">
+                <div className="text-white font-medium">{user.displayName || 'Player'}</div>
+                <div className="text-slate-400 text-xs">{user.email}</div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="text-slate-400 hover:text-red-400 transition-colors ml-2"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : authInitialized ? (
+            <div className="absolute top-4 right-4">
+              <button
+                onClick={() => setLobbyView('login')}
+                className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg px-4 py-2 border border-slate-700 transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                <span className="text-sm">Sign In</span>
+              </button>
+            </div>
+          ) : null}
+
           <div className="text-center mb-10">
             <h1 className="text-5xl font-bold text-white mb-3 flex items-center justify-center">
               <Crown className="w-12 h-12 mr-3 text-yellow-400" />
@@ -446,6 +532,182 @@ export const GameLobby: React.FC = () => {
                 This game session has ended.
               </div>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (lobbyView === 'login') {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div className="max-w-md w-full mx-6">
+          <button
+            onClick={() => setLobbyView('menu')}
+            className="text-slate-400 hover:text-white mb-6 flex items-center transition-colors"
+          >
+            <X className="w-4 h-4 mr-1" /> Back
+          </button>
+
+          <h2 className="text-3xl font-bold text-white mb-2">Sign In</h2>
+          <p className="text-slate-400 mb-8">Sign in to track your stats and game history</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  className="w-full bg-slate-800 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-lg"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full bg-slate-800 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-lg"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+                />
+              </div>
+            </div>
+
+            {authError && (
+              <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-red-300 text-sm">
+                {authError}
+              </div>
+            )}
+
+            <button
+              onClick={handleSignIn}
+              disabled={!authEmail.trim() || !authPassword.trim() || authLoading}
+              className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
+            >
+              {authLoading ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /><span>Signing in...</span></>
+              ) : (
+                <><LogIn className="w-5 h-5" /><span>Sign In</span></>
+              )}
+            </button>
+
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  setLobbyView('signup');
+                  setAuthEmail('');
+                  setAuthPassword('');
+                }}
+                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+              >
+                Don't have an account? Sign up
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (lobbyView === 'signup') {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div className="max-w-md w-full mx-6">
+          <button
+            onClick={() => setLobbyView('menu')}
+            className="text-slate-400 hover:text-white mb-6 flex items-center transition-colors"
+          >
+            <X className="w-4 h-4 mr-1" /> Back
+          </button>
+
+          <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
+          <p className="text-slate-400 mb-8">Sign up to save your progress and stats</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Display Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="text"
+                  value={authDisplayName}
+                  onChange={(e) => setAuthDisplayName(e.target.value)}
+                  placeholder="Your name in games"
+                  className="w-full bg-slate-800 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none text-lg"
+                  maxLength={20}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  className="w-full bg-slate-800 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none text-lg"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full bg-slate-800 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none text-lg"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
+                />
+              </div>
+            </div>
+
+            {authError && (
+              <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-red-300 text-sm">
+                {authError}
+              </div>
+            )}
+
+            <button
+              onClick={handleSignUp}
+              disabled={!authEmail.trim() || !authPassword.trim() || !authDisplayName.trim() || authLoading}
+              className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
+            >
+              {authLoading ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /><span>Creating account...</span></>
+              ) : (
+                <><UserPlus className="w-5 h-5" /><span>Create Account</span></>
+              )}
+            </button>
+
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  setLobbyView('login');
+                  setAuthEmail('');
+                  setAuthPassword('');
+                  setAuthDisplayName('');
+                }}
+                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+              >
+                Already have an account? Sign in
+              </button>
+            </div>
           </div>
         </div>
       </div>
