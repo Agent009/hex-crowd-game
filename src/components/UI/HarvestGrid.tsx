@@ -38,7 +38,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
   onClose
 }) => {
   const dispatch = useDispatch();
-  const { currentPlayer, currentPhase, playerStats } = useSelector((state: RootState) => state.game);
+  const { currentPlayer, currentPhase, playerStats, globalItemQuantities } = useSelector((state: RootState) => state.game);
   const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
 
   const [harvestGrid] = useState(() => new HarvestGridClass());
@@ -134,6 +134,12 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
     if (slotIndex >= 0 && slotIndex < 3 && slotIndex < itemDatabase.length) {
       const item = itemDatabase[slotIndex];
+      const globalRemaining = globalItemQuantities?.[item.id] ?? item.quantity;
+
+      if (globalRemaining <= 0) {
+        showFlash(`${item.name} is no longer available — global supply exhausted!`);
+        return;
+      }
 
       dispatch(harvestFromTile({
         playerId: currentPlayer.id,
@@ -156,6 +162,13 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
       return;
     }
 
+    const itemTemplate = itemDatabase.find(item => item.id === itemId);
+    const globalRemaining = itemTemplate ? (globalItemQuantities?.[itemId] ?? itemTemplate.quantity) : 0;
+    if (globalRemaining <= 0) {
+      showFlash(`${itemTemplate?.name || 'Item'} supply exhausted — no more can be crafted!`);
+      return;
+    }
+
     if (!canCraftItem(itemId, currentPlayerStats.resources)) {
       showFlash('Cannot craft item - insufficient resources!');
       return;
@@ -166,7 +179,6 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
       itemId
     }));
 
-    const itemTemplate = itemDatabase.find(item => item.id === itemId);
     if (itemTemplate) {
       showFlash(`Successfully crafted ${itemTemplate.name}!`, 'success');
     }
@@ -342,11 +354,14 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     return (
       <div className="space-y-2">
         <div className="text-slate-400 text-xs mb-3">
-          Only the top 3 items are available for harvest. Items cost 3 AP each.
+          Only the top 3 items are available for harvest. Items cost 3 AP each. Global supply is limited.
         </div>
 
         {itemDatabase.map((item, index) => {
-          const isEnabled = index < 3;
+          const globalRemaining = globalItemQuantities?.[item.id] ?? item.quantity;
+          const isSlotEnabled = index < 3;
+          const isGloballyAvailable = globalRemaining > 0;
+          const isEnabled = isSlotEnabled && isGloballyAvailable;
           const canHarvest = isEnabled && isPlayerOnSelectedTile && isSelectedTileActive &&
                            currentPlayerStats && currentPlayerStats.actionPoints >= 3;
 
@@ -354,9 +369,9 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
             <div
               key={item.id}
               className={`p-3 rounded border transition-colors ${
-                isEnabled 
+                isEnabled
                   ? canHarvest
-                    ? 'bg-purple-600 border-purple-500 hover:bg-purple-700 cursor-pointer' 
+                    ? 'bg-blue-900 border-blue-600 hover:bg-blue-800 cursor-pointer'
                     : 'bg-slate-700 border-slate-600'
                   : 'bg-slate-800 border-slate-700 opacity-40'
               }`}
@@ -371,13 +386,24 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
                       {!isEnabled && <Lock className="w-3 h-3 text-slate-500" />}
                     </div>
                     <div className="text-slate-400 text-xs">
-                      {item.availableUses} uses
+                      {item.availableUses} uses per item
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <Zap className="w-3 h-3 text-yellow-400" />
-                  <span className="text-yellow-400 text-xs font-semibold">3</span>
+                <div className="flex items-center space-x-2">
+                  <div className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                    globalRemaining === 0
+                      ? 'bg-red-900 text-red-300'
+                      : globalRemaining <= 2
+                        ? 'bg-orange-900 text-orange-300'
+                        : 'bg-slate-600 text-slate-300'
+                  }`}>
+                    {globalRemaining}/{item.quantity}
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Zap className="w-3 h-3 text-yellow-400" />
+                    <span className="text-yellow-400 text-xs font-semibold">3</span>
+                  </div>
                 </div>
               </div>
 
@@ -386,10 +412,17 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
                 {item.effects.length > 1 && '...'}
               </div>
 
-              {!isEnabled && (
+              {!isSlotEnabled && (
                 <div className="mt-2 text-red-400 text-xs flex items-center">
                   <Lock className="w-3 h-3 mr-1" />
                   Item slot disabled
+                </div>
+              )}
+
+              {isSlotEnabled && !isGloballyAvailable && (
+                <div className="mt-2 text-red-400 text-xs flex items-center">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  Supply exhausted globally
                 </div>
               )}
             </div>
@@ -414,14 +447,17 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     return (
       <div className="space-y-2">
         {craftableItems.map(item => {
-          const canCraft = canCraftItem(item.id, currentPlayerStats.resources);
+          const globalRemaining = globalItemQuantities?.[item.id] ?? item.quantity;
+          const isGloballyAvailable = globalRemaining > 0;
+          const hasResources = canCraftItem(item.id, currentPlayerStats.resources);
+          const canCraft = hasResources && isGloballyAvailable;
 
           return (
             <div
               key={item.id}
               className={`p-3 rounded border transition-colors ${
-                canCraft 
-                  ? 'bg-slate-600 border-green-600 hover:bg-slate-500 cursor-pointer' 
+                canCraft
+                  ? 'bg-slate-600 border-green-600 hover:bg-slate-500 cursor-pointer'
                   : 'bg-slate-700 border-slate-600 opacity-50'
               }`}
               onClick={() => canCraft && handleCraftItem(item.id)}
@@ -436,9 +472,20 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
                     </div>
                   </div>
                 </div>
-                {canCraft && (
-                  <Sparkles className="w-4 h-4 text-green-400" />
-                )}
+                <div className="flex items-center space-x-2">
+                  <div className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                    globalRemaining === 0
+                      ? 'bg-red-900 text-red-300'
+                      : globalRemaining <= 2
+                        ? 'bg-orange-900 text-orange-300'
+                        : 'bg-slate-600 text-slate-300'
+                  }`}>
+                    {globalRemaining}/{item.quantity}
+                  </div>
+                  {canCraft && (
+                    <Sparkles className="w-4 h-4 text-green-400" />
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-1 mb-2">
@@ -461,6 +508,13 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
               <div className="text-slate-400 text-xs">
                 {item.effects.join(' • ')}
               </div>
+
+              {!isGloballyAvailable && (
+                <div className="mt-2 text-red-400 text-xs flex items-center">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  Supply exhausted globally — cannot craft
+                </div>
+              )}
             </div>
           );
         })}

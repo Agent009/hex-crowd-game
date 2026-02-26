@@ -96,6 +96,14 @@ const generateTeams = (): Team[] => {
 
 export interface GameState extends PlayerState, PhaseState {}
 
+const buildInitialItemQuantities = (): { [itemId: string]: number } => {
+  const quantities: { [itemId: string]: number } = {};
+  itemDatabase.forEach(item => {
+    quantities[item.id] = item.quantity;
+  });
+  return quantities;
+};
+
 const initialState: GameState = {
   players: [],
   teams: generateTeams(),
@@ -106,6 +114,7 @@ const initialState: GameState = {
   roundNumber: 1,
   activityEvents: [],
   tradeProposals: [],
+  globalItemQuantities: buildInitialItemQuantities(),
 
   currentPhase: 'round_start',
   phaseStartTime: 0,
@@ -751,18 +760,15 @@ const gameSlice = createSlice({
       playerStats.actionPoints -= apCost;
 
       if (isItem && itemId) {
+        const globalRemaining = state.globalItemQuantities[itemId] ?? 0;
+        if (globalRemaining <= 0) return;
+
         const itemTemplate = itemDatabase.find(item => item.id === itemId);
         if (itemTemplate) {
           const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
           playerStats.items.push({ ...itemTemplate, availableUses: uses });
-        }
-      } else if (resourceId) {
-        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) + 1;
-      }
+          state.globalItemQuantities[itemId] = globalRemaining - 1;
 
-      if (isItem && itemId) {
-        const itemTemplate = itemDatabase.find(item => item.id === itemId);
-        if (itemTemplate) {
           state.activityEvents.unshift({
             id: `${Date.now()}_${Math.random()}`,
             timestamp: Date.now(),
@@ -770,11 +776,13 @@ const gameSlice = createSlice({
             playerId,
             playerName: player.name,
             playerNumber: player.number,
-            message: `${player.name} harvested ${itemTemplate.name}`,
+            message: `${player.name} harvested ${itemTemplate.name} (${state.globalItemQuantities[itemId]} remaining)`,
             details: { item: itemTemplate.name }
           });
         }
       } else if (resourceId) {
+        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) + 1;
+
         state.activityEvents.unshift({
           id: `${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
@@ -893,6 +901,9 @@ const gameSlice = createSlice({
       const itemTemplate = itemDatabase.find(item => item.id === itemId);
       if (!itemTemplate || !isCraftable(itemTemplate)) return;
 
+      const globalRemaining = state.globalItemQuantities[itemId] ?? 0;
+      if (globalRemaining <= 0) return;
+
       for (const [resourceId, required] of Object.entries(itemTemplate.craftingRequirements)) {
         if ((playerStats.resources[resourceId] || 0) < required) return;
       }
@@ -903,6 +914,7 @@ const gameSlice = createSlice({
 
       const uses = Math.floor(Math.random() * (itemTemplate.maxUses - itemTemplate.minUses + 1)) + itemTemplate.minUses;
       playerStats.items.push({ ...itemTemplate, availableUses: uses });
+      state.globalItemQuantities[itemId] = globalRemaining - 1;
 
       state.activityEvents.unshift({
         id: `${Date.now()}_${Math.random()}`,

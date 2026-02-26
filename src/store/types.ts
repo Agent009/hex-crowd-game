@@ -59,6 +59,7 @@ export interface PlayerState {
   roundNumber: number;
   activityEvents: ActivityEvent[];
   tradeProposals: TradeProposal[];
+  globalItemQuantities: { [itemId: string]: number };
 }
 
 export interface PhaseState {
