@@ -30,39 +30,40 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 - **Blocker:** H1, H6, H7 (hero stats needed for combat calculation)
 - **Notes:** No combat logic exists anywhere. Requires damage model, turn order, and outcome resolution (elimination or retreat).
 
-### M3 — Victory Conditions — OPEN
-- **Status:** Not started
-- **Blocker:** M2 (combat is the primary elimination path)
-- **Notes:** `removeEliminatedPlayers` exists but no win-state detection or end-game screen fires.
+### M3 — Victory Conditions — COMPLETE
+- **Status:** Done
+- Victory conditions are now fully wired:
+- After each elimination phase, the game checks if a winner has emerged — either the last surviving player (solo) or the last team with any surviving players (team victory)
+- When a winner is detected, gameMode transitions to 'ended' and a VictoryResult is stored with the winner's name, team, round number, and the list of surviving players
+- A VictoryScreen overlay appears with a smooth fade-in animation showing: the winner's name, victory type (solo/team), round number, list of survivors, the elimination log, and final team scores if any
+- Two buttons are provided — "Return to Lobby" and "Play Again" — both reset the full game state back to the lobby
+- The activity log records the victory event for posterity
 
-### M4 — Plains HP Gain Per Round — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Small isolated fix. `hpGainPerRound` is defined in terrain data but never read in `gameSlice.ts` terrain processing.
+### M4 — Plains HP Gain Per Round — COMPLETE
+- **Status:** Done
+- During the terrain effects phase, players standing on plains tiles now roll against the 25% chance defined in the terrain data.
+- On success, they gain 1 HP (capped at 10), and the event is logged to the activity feed with a status effect indicator.
 
 ---
 
 ## Phase I: Item System
 
-### I1 — Terraform Item Effect — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** `consumeItemUse()` needs to branch on item ID/effect type and call a new `activateTiles` reducer.
+### I1 — Terraform Item Effect — COMPLETE
+- **Status:** Done
+- Using Terraform selects 3 currently inactive tiles at random and activates them, making them harvestable.
+- Implemented as a thunk that dispatches the new activateTile world action.
 
-### I2 — Leech Item Effect — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Same pattern as I1. Needs a `deactivateTiles` reducer path.
+### I2 — Leech Item Effect — COMPLETE
+- **Status:** Done
+- Using Leech deactivates 2 random active tiles (excluding the tile the player is currently on). Also a thunk using the existing deactivateTile world action.
 
-### I3 — Armageddon Item Effect — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Needs a damage-all-players reducer path in `consumeItemUse()`. Activity log entry per affected player.
+### I3 — Armageddon Item Effect — COMPLETE
+- **Status:** Done
+- Using Armageddon deals 2 HP damage to every other player in the game, with individual activity log entries per affected player.
 
-### I4 — Rejuvenate Item Effect — OPEN
-- **Status:** Not started
-- **Blocker:** None
-- **Notes:** Needs a heal-self reducer path in `consumeItemUse()`. HP capped at player max HP.
+### I4 — Rejuvenate Item Effect — COMPLETE
+- **Status:** Done
+- Using Rejuvenate heals the player for +3 HP, capped at max HP of 10.
 
 ### I5 — Boat Storm Destruction — COMPLETE
 - **Status:** Done
@@ -72,10 +73,15 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 - **Status:** Done
 - **Notes:** `movePlayer` reducer in `gameSlice.ts` now checks the player's **current** tile before allowing movement. If standing on a mountain tile (any tile whose `requiredItem` is `climbing_gear`), movement is blocked unless the player holds at least one climbing gear with remaining uses. No gear → cannot leave the mountain.
 
-### I7 — Global Item Quantity Limits — OPEN
-- **Status:** Not started
-- **Blocker:** P1 or P2 (requires shared state across clients for true enforcement)
-- **Notes:** Can be partially implemented in local state for single-session enforcement. Full enforcement requires server-side tracking.
+### I7 — Global Item Quantity Limits — COMPLETE
+- **Status:** Done
+- Global item quantity tracking is now enforced across the game:
+- Each item type (boat, climbing gear, rejuvenate, etc.) now has a shared global counter initialized from its quantity field in the data
+- When any player harvests an item, the global counter for that item decrements — if it reaches 0, no more copies can be obtained by anyone
+- Same enforcement applies to crafting — players cannot craft an item whose global supply is exhausted
+- The Items tab in the Harvest Grid now shows a remaining/total badge per item (color-coded: red = exhausted, orange = low, grey = normal)
+- The Crafting tab shows the same badges and an "Supply exhausted" warning when applicable
+- The activity log entry when harvesting an item now includes how many remain globally (e.g. "Player 1 harvested Boat (4 remaining)")
 
 ---
 
