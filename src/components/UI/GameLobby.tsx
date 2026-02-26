@@ -21,9 +21,10 @@ import {
   LogIn,
   Loader2,
   Globe,
+  RefreshCw,
 } from 'lucide-react';
 
-type LobbyView = 'menu' | 'creating' | 'joining' | 'session';
+type LobbyView = 'menu' | 'creating' | 'joining' | 'reconnecting' | 'session';
 
 export const GameLobby: React.FC = () => {
   const dispatch = useDispatch();
@@ -35,6 +36,8 @@ export const GameLobby: React.FC = () => {
     localPlayerId,
     createSession,
     joinSession,
+    reconnectSession,
+    getActiveSession,
     disconnect,
     sendReady,
     sendStart,
@@ -48,6 +51,9 @@ export const GameLobby: React.FC = () => {
 
   const [showLocalJoinForm, setShowLocalJoinForm] = useState(false);
   const [localPlayerName, setLocalPlayerName] = useState('');
+  const [reconnectCode, setReconnectCode] = useState('');
+  const [sessionInfo, setSessionInfo] = useState<{ gameMode: string; playerCount: number; hasState: boolean } | null>(null);
+  const [checkingSession, setCheckingSession] = useState(false);
 
   const handleCreateSession = async () => {
     if (!playerName.trim()) return;
@@ -65,6 +71,24 @@ export const GameLobby: React.FC = () => {
     const result = await joinSession(joinCode.trim(), playerName.trim());
     setIsLoading(false);
     if (result) {
+      setLobbyView('session');
+    }
+  };
+
+  const handleCheckSession = async () => {
+    if (!reconnectCode.trim() || reconnectCode.length < 6) return;
+    setCheckingSession(true);
+    const info = await getActiveSession(reconnectCode.trim());
+    setCheckingSession(false);
+    setSessionInfo(info);
+  };
+
+  const handleReconnect = async () => {
+    if (!playerName.trim() || !reconnectCode.trim()) return;
+    setIsLoading(true);
+    const result = await reconnectSession(reconnectCode.trim(), '', playerName.trim());
+    setIsLoading(false);
+    if (result?.reconnected) {
       setLobbyView('session');
     }
   };
@@ -169,6 +193,14 @@ export const GameLobby: React.FC = () => {
             >
               <LogIn className="w-6 h-6" />
               <span>Join Online Game</span>
+            </button>
+
+            <button
+              onClick={() => setLobbyView('reconnecting')}
+              className="w-full flex items-center justify-center space-x-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-6 py-4 font-semibold text-lg transition-colors"
+            >
+              <RefreshCw className="w-6 h-6" />
+              <span>Reconnect to Game</span>
             </button>
 
             <div className="relative flex items-center my-6">
@@ -298,6 +330,122 @@ export const GameLobby: React.FC = () => {
                 <><LogIn className="w-5 h-5" /><span>Join Session</span></>
               )}
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (lobbyView === 'reconnecting') {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+        <div className="max-w-md w-full mx-6">
+          <button
+            onClick={() => {
+              setLobbyView('menu');
+              setReconnectCode('');
+              setSessionInfo(null);
+            }}
+            className="text-slate-400 hover:text-white mb-6 flex items-center transition-colors"
+          >
+            <X className="w-4 h-4 mr-1" /> Back
+          </button>
+
+          <h2 className="text-3xl font-bold text-white mb-2">Reconnect to Game</h2>
+          <p className="text-slate-400 mb-8">Rejoin an in-progress game session</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-slate-300 text-sm mb-2 block">Session Code</label>
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={reconnectCode}
+                  onChange={(e) => {
+                    setReconnectCode(e.target.value.toUpperCase());
+                    setSessionInfo(null);
+                  }}
+                  placeholder="XXXXXX"
+                  className="flex-1 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-amber-500 focus:outline-none text-lg tracking-[0.3em] text-center font-mono"
+                  maxLength={6}
+                />
+                <button
+                  onClick={handleCheckSession}
+                  disabled={reconnectCode.length < 6 || checkingSession}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                >
+                  {checkingSession ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Check'}
+                </button>
+              </div>
+            </div>
+
+            {sessionInfo && (
+              <div className={`rounded-lg p-4 border ${
+                sessionInfo.gameMode === 'playing' && sessionInfo.hasState
+                  ? 'bg-green-900/30 border-green-700'
+                  : 'bg-slate-800 border-slate-600'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-300 text-sm">Session Status</span>
+                  <span className={`text-sm font-medium ${
+                    sessionInfo.gameMode === 'playing' ? 'text-green-400' :
+                    sessionInfo.gameMode === 'lobby' ? 'text-blue-400' : 'text-slate-400'
+                  }`}>
+                    {sessionInfo.gameMode === 'playing' ? 'In Progress' :
+                     sessionInfo.gameMode === 'lobby' ? 'In Lobby' : 'Ended'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-300 text-sm">Players</span>
+                  <span className="text-white text-sm">{sessionInfo.playerCount}</span>
+                </div>
+                {sessionInfo.gameMode === 'playing' && !sessionInfo.hasState && (
+                  <p className="text-amber-400 text-xs mt-2">
+                    No saved state available - game may have just started
+                  </p>
+                )}
+              </div>
+            )}
+
+            {sessionInfo && sessionInfo.gameMode !== 'ended' && (
+              <div>
+                <label className="text-slate-300 text-sm mb-2 block">Your Name (as registered in game)</label>
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Enter your name"
+                  className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-amber-500 focus:outline-none text-lg"
+                  maxLength={20}
+                />
+              </div>
+            )}
+
+            {session.error && (
+              <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-red-300 text-sm">
+                {session.error}
+              </div>
+            )}
+
+            {sessionInfo && sessionInfo.gameMode !== 'ended' && (
+              <button
+                onClick={handleReconnect}
+                disabled={!playerName.trim() || isLoading}
+                className="w-full flex items-center justify-center space-x-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
+              >
+                {isLoading ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Reconnecting...</span></>
+                ) : (
+                  <><RefreshCw className="w-5 h-5" /><span>Reconnect</span></>
+                )}
+              </button>
+            )}
+
+            {sessionInfo && sessionInfo.gameMode === 'ended' && (
+              <div className="text-center text-slate-400 py-4">
+                This game session has ended.
+              </div>
+            )}
           </div>
         </div>
       </div>

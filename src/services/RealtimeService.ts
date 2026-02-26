@@ -68,11 +68,15 @@ const generatePlayerId = (): string => {
   return `player_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 };
 
+const STATE_SAVE_INTERVAL_MS = 5000;
+
 class RealtimeService {
   private channel: RealtimeChannel | null = null;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private phaseInterval: ReturnType<typeof setInterval> | null = null;
+  private stateSaveInterval: ReturnType<typeof setInterval> | null = null;
   private sessionId: string | null = null;
+  private lastSavedStateHash: string | null = null;
 
   async createSession(playerName: string): Promise<{ sessionCode: string; playerId: string } | null> {
     try {
@@ -118,6 +122,8 @@ class RealtimeService {
         store.dispatch(setLocalPlayer({ playerId: justJoinedPlayer.id, playerName }));
       }
 
+      this.startStateSaveLoop();
+
       return { sessionCode, playerId };
     } catch (err) {
       store.dispatch(setSessionError('Failed to create session'));
@@ -131,7 +137,7 @@ class RealtimeService {
 
       const { data: session, error } = await supabase
         .from('game_sessions')
-        .select('id, host_player_id, game_mode, player_count, max_players')
+        .select('id, host_player_id, game_mode, player_count, max_players, game_state, world_state')
         .eq('session_code', sessionCode.toUpperCase())
         .maybeSingle();
 
@@ -140,12 +146,12 @@ class RealtimeService {
         return null;
       }
 
-      if (session.game_mode !== 'lobby') {
-        store.dispatch(setSessionError('Game already in progress'));
+      if (session.game_mode === 'ended') {
+        store.dispatch(setSessionError('Game has ended'));
         return null;
       }
 
-      if (session.player_count >= session.max_players) {
+      if (session.game_mode === 'lobby' && session.player_count >= session.max_players) {
         store.dispatch(setSessionError('Session is full'));
         return null;
       }
@@ -161,6 +167,11 @@ class RealtimeService {
       }));
       store.dispatch(setLocalPlayer({ playerId, playerName }));
 
+      if (session.game_state && session.world_state) {
+        store.dispatch(syncGameState(session.game_state as GameState));
+        store.dispatch(syncWorldState(session.world_state as WorldState));
+      }
+
       await this.joinChannel(session.id, playerId, playerName);
 
       this.sendAction({ type: 'join', playerName, playerId });
@@ -170,6 +181,86 @@ class RealtimeService {
       store.dispatch(setSessionError('Failed to join session'));
       return null;
     }
+  }
+
+  async reconnectSession(
+    sessionCode: string,
+    playerId: string,
+    playerName: string
+  ): Promise<{ reconnected: boolean } | null> {
+    try {
+      store.dispatch(setConnectionStatus('connecting'));
+
+      const { data: session, error } = await supabase
+        .from('game_sessions')
+        .select('id, host_player_id, game_mode, game_state, world_state')
+        .eq('session_code', sessionCode.toUpperCase())
+        .maybeSingle();
+
+      if (error || !session) {
+        store.dispatch(setSessionError('Session not found'));
+        return null;
+      }
+
+      if (session.game_mode === 'ended') {
+        store.dispatch(setSessionError('Game has ended'));
+        return null;
+      }
+
+      if (!session.game_state || !session.world_state) {
+        store.dispatch(setSessionError('No saved game state'));
+        return null;
+      }
+
+      const gameState = session.game_state as GameState;
+      const existingPlayer = gameState.players.find(
+        p => p.id === playerId || p.name === playerName
+      );
+
+      if (!existingPlayer) {
+        store.dispatch(setSessionError('Player not found in session'));
+        return null;
+      }
+
+      this.sessionId = session.id;
+
+      store.dispatch(setSession({
+        sessionId: session.id,
+        sessionCode: sessionCode.toUpperCase(),
+        hostPlayerId: session.host_player_id,
+        isHost: false,
+      }));
+      store.dispatch(setLocalPlayer({ playerId: existingPlayer.id, playerName: existingPlayer.name }));
+      store.dispatch(syncGameState(gameState));
+      store.dispatch(syncWorldState(session.world_state as WorldState));
+
+      await this.joinChannel(session.id, existingPlayer.id, existingPlayer.name);
+
+      return { reconnected: true };
+    } catch (err) {
+      store.dispatch(setSessionError('Failed to reconnect'));
+      return null;
+    }
+  }
+
+  async getActiveSession(sessionCode: string): Promise<{
+    gameMode: string;
+    playerCount: number;
+    hasState: boolean;
+  } | null> {
+    const { data, error } = await supabase
+      .from('game_sessions')
+      .select('game_mode, player_count, game_state')
+      .eq('session_code', sessionCode.toUpperCase())
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      gameMode: data.game_mode,
+      playerCount: data.player_count,
+      hasState: !!data.game_state,
+    };
   }
 
   private async joinChannel(sessionId: string, playerId: string, playerName: string) {
@@ -383,6 +474,76 @@ class RealtimeService {
     }
   }
 
+  private startStateSaveLoop() {
+    this.stopStateSaveLoop();
+
+    this.stateSaveInterval = setInterval(() => {
+      this.saveGameState();
+    }, STATE_SAVE_INTERVAL_MS);
+  }
+
+  private stopStateSaveLoop() {
+    if (this.stateSaveInterval) {
+      clearInterval(this.stateSaveInterval);
+      this.stateSaveInterval = null;
+    }
+  }
+
+  private async saveGameState() {
+    if (!this.sessionId) return;
+
+    const session = store.getState().session;
+    if (!session.isHost) return;
+
+    const state = store.getState();
+    const gameState = state.game;
+    const worldState = state.world;
+
+    const stateHash = JSON.stringify({
+      round: gameState.roundNumber,
+      phase: gameState.currentPhase,
+      phaseTimer: gameState.phaseTimer,
+      playerCount: gameState.players.length,
+    });
+
+    if (stateHash === this.lastSavedStateHash) return;
+
+    const { error } = await supabase
+      .from('game_sessions')
+      .update({
+        game_state: gameState,
+        world_state: worldState,
+        round_number: gameState.roundNumber,
+        game_mode: gameState.gameMode,
+        player_count: gameState.players.length,
+        last_saved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', this.sessionId);
+
+    if (!error) {
+      this.lastSavedStateHash = stateHash;
+    }
+  }
+
+  async recordTurnAction(actionType: string, playerId: string | null, actionData: object) {
+    if (!this.sessionId) return;
+
+    const session = store.getState().session;
+    if (!session.isHost) return;
+
+    const gameState = store.getState().game;
+
+    await supabase.from('game_turn_history').insert({
+      session_id: this.sessionId,
+      round_number: gameState.roundNumber,
+      phase: gameState.currentPhase,
+      action_type: actionType,
+      player_id: playerId,
+      action_data: actionData,
+    });
+  }
+
   private handlePlayerDisconnect(playerId: string) {
     const session = store.getState().session;
 
@@ -429,15 +590,12 @@ class RealtimeService {
 
   async disconnect() {
     this.stopHostLoop();
-
-    if (this.channel) {
-      await supabase.removeChannel(this.channel);
-      this.channel = null;
-    }
+    this.stopStateSaveLoop();
 
     if (this.sessionId) {
       const session = store.getState().session;
       if (session.isHost) {
+        await this.saveGameState();
         await supabase
           .from('game_sessions')
           .update({ game_mode: 'ended', updated_at: new Date().toISOString() })
@@ -445,7 +603,13 @@ class RealtimeService {
       }
     }
 
+    if (this.channel) {
+      await supabase.removeChannel(this.channel);
+      this.channel = null;
+    }
+
     this.sessionId = null;
+    this.lastSavedStateHash = null;
     store.dispatch(clearSession());
   }
 }

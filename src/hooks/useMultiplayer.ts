@@ -18,6 +18,14 @@ export const useMultiplayer = () => {
     return realtimeService.joinSession(sessionCode, playerName);
   }, []);
 
+  const reconnectSession = useCallback(async (sessionCode: string, playerId: string, playerName: string) => {
+    return realtimeService.reconnectSession(sessionCode, playerId, playerName);
+  }, []);
+
+  const getActiveSession = useCallback(async (sessionCode: string) => {
+    return realtimeService.getActiveSession(sessionCode);
+  }, []);
+
   const disconnect = useCallback(async () => {
     return realtimeService.disconnect();
   }, []);
@@ -90,6 +98,8 @@ export const useMultiplayer = () => {
     session,
     createSession,
     joinSession,
+    reconnectSession,
+    getActiveSession,
     disconnect,
     sendMove,
     sendHarvest,

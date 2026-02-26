@@ -158,10 +158,15 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
   - **PartyGameHUD updates**: Host indicator badge, multiplayer-aware phase timer (only host runs the loop), auto-set currentPlayer to local player.
   - **Local mode preserved**: Local Game mode works exactly as before with no network dependency.
 
-### P2 — Game Session Persistence — OPEN
-- **Status:** Not started
-- **Blocker:** P1
-- **Notes:** Supabase tables for game sessions, turns, and events. Players reconnect to in-progress sessions.
+### P2 — Game Session Persistence — COMPLETE
+- **Status:** Done
+- **Notes:** Full game state persistence implemented.
+  - **Database**: Added `game_state`, `world_state`, `last_saved_at`, and `round_number` columns to `game_sessions` table. Created `game_turn_history` table for action audit trail.
+  - **Host auto-save**: Host saves game state to database every 5 seconds (debounced to avoid unnecessary writes).
+  - **Reconnection flow**: New "Reconnect to Game" option in main menu. Players can enter a session code, check session status (lobby/playing/ended), and rejoin.
+  - **State restoration**: On reconnect, full game state and world state are loaded from database, then synced via Realtime channel.
+  - **Join in-progress**: Players joining an in-progress game receive the persisted state immediately.
+  - **useMultiplayer hook**: Added `reconnectSession` and `getActiveSession` methods.
 
 ### P3 — Player Authentication — OPEN
 - **Status:** Not started
@@ -179,8 +184,8 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 | I — Item System | 7 | 5 | 0 | 2 |
 | H — Hero System | 10 | 10 | 0 | 0 |
 | B — Building System | 1 | 1 | 0 | 0 |
-| P — Infrastructure | 3 | 2 | 0 | 1 |
-| **TOTAL** | **26** | **21** | **0** | **5** |
+| P — Infrastructure | 3 | 1 | 0 | 2 |
+| **TOTAL** | **26** | **20** | **0** | **6** |
 
 ---
 
