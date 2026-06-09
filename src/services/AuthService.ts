@@ -26,6 +26,12 @@ class AuthService {
     if (this.initialized) return;
     this.initialized = true;
 
+    if (!supabase) {
+      store.dispatch(setUser(null));
+      store.dispatch(setAuthInitialized(true));
+      return;
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     store.dispatch(setUser(mapSupabaseUser(session?.user ?? null)));
     store.dispatch(setAuthInitialized(true));
@@ -40,6 +46,13 @@ class AuthService {
   async signUp(email: string, password: string, displayName: string): Promise<{ success: boolean; error?: string }> {
     store.dispatch(setAuthLoading(true));
     store.dispatch(setAuthError(null));
+
+    if (!supabase) {
+      const error = 'Supabase is not configured';
+      store.dispatch(setAuthLoading(false));
+      store.dispatch(setAuthError(error));
+      return { success: false, error };
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -67,6 +80,13 @@ class AuthService {
     store.dispatch(setAuthLoading(true));
     store.dispatch(setAuthError(null));
 
+    if (!supabase) {
+      const error = 'Supabase is not configured';
+      store.dispatch(setAuthLoading(false));
+      store.dispatch(setAuthError(error));
+      return { success: false, error };
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -87,13 +107,22 @@ class AuthService {
   }
 
   async signOut(): Promise<void> {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     store.dispatch(clearAuth());
     store.dispatch(setAuthInitialized(true));
   }
 
   async resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
     store.dispatch(setAuthLoading(true));
+
+    if (!supabase) {
+      const error = 'Supabase is not configured';
+      store.dispatch(setAuthLoading(false));
+      store.dispatch(setAuthError(error));
+      return { success: false, error };
+    }
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,

@@ -6,6 +6,7 @@ import { deselectTile } from '../../store/worldSlice';
 import { toggleTileInfo } from '../../store/uiSlice';
 import {cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey, areAdjacent} from '../../utils/hexGrid';
 import {terrainData} from '../../data/gameData';
+import { useMultiplayer } from '../../hooks/useMultiplayer';
 import {
   Package,
   Hammer,
@@ -24,6 +25,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
                                                               onOpenHarvestGrid
                                                             }) => {
   const dispatch = useDispatch();
+  const { isMultiplayer, sendMove } = useMultiplayer();
   const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
   const {
     currentPlayer,
@@ -73,11 +75,15 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
 
   const handleMove = () => {
     if (currentPlayer && canMove()) {
-      dispatch(movePlayer({
-        playerId: currentPlayer.id,
-        target: selectedTile,
-        tiles
-      }));
+      if (isMultiplayer) {
+        sendMove(currentPlayer.id, selectedTile);
+      } else {
+        dispatch(movePlayer({
+          playerId: currentPlayer.id,
+          target: selectedTile,
+          tiles
+        }));
+      }
       dispatch(deselectTile());
     }
   };

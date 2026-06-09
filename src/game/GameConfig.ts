@@ -10,7 +10,7 @@ export const GameConfig = {
     maxZoom: 2,
     zoomInFactor: 1.1,
     zoomOutFactor: 0.9,
-    backgroundColor: '#2D5016',
+    backgroundColor: '#071915',
   },
 
   rendering: {

@@ -18,11 +18,16 @@ import { TextureFactory } from "./TextureFactory";
 import { ParticleEmitterManager } from "./ParticleEmitterManager";
 import { setPhaserGame, clearPhaserGame } from "./phaserRef";
 import { GameConfig } from "./GameConfig";
+import { Hero } from "../store/types";
+import { heroClasses } from "../data/heroesData";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private tileTerrainIcons: Map<string, Phaser.GameObjects.Text> = new Map();
   private playerNumbers: Map<string, Phaser.GameObjects.Text> = new Map();
+  private playerMarkers: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private heroMarkerBadges: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private heroMarkers: Map<string, Phaser.GameObjects.Text> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private sharedEmitterManager!: ParticleEmitterManager;
   private particleSystem!: AtmosphericParticleSystem;
@@ -30,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private hexSize = DEFAULT_HEX_SIZE;
   private gameData: { [key: string]: HexTile } = {};
   private previousGameData: { [key: string]: HexTile } = {};
+  private heroes: Hero[] = [];
   private selectedTile: CubeCoords | null = null;
   private onTileClick?: (coords: CubeCoords) => void;
   private onTileHover?: (coords: CubeCoords | null) => void;
@@ -47,7 +53,7 @@ export class GameScene extends Phaser.Scene {
   create() {
 
     // Set up camera
-    this.cameras.main.setZoom(1);
+    this.cameras.main.setZoom(0.82);
     this.cameras.main.centerOn(0, 0);
 
     // Make the game instance globally accessible for coordinate conversion
@@ -81,12 +87,14 @@ export class GameScene extends Phaser.Scene {
   // Custom initialization method to avoid conflicts with Phaser's init
   public initializeScene(data: {
     tiles: { [key: string]: HexTile };
+    heroes: Hero[];
     onTileClick: (coords: CubeCoords) => void;
     onTileHover: (coords: CubeCoords | null) => void;
     showPlayerNumbers: boolean;
   }) {
 
     this.gameData = data.tiles;
+    this.heroes = data.heroes;
     this.onTileClick = data.onTileClick;
     this.onTileHover = data.onTileHover;
     this.showPlayerNumbers = data.showPlayerNumbers;
@@ -150,12 +158,14 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
+      const currPlayers = this.playerSignature(curr.players);
+      const prevPlayers = this.playerSignature(prev.players);
+
       if (
         curr.terrain !== prev.terrain ||
         curr.isActive !== prev.isActive ||
         curr.fogLevel !== prev.fogLevel ||
-        (curr.players?.length ?? 0) !== (prev.players?.length ?? 0) ||
-        curr.players !== prev.players
+        currPlayers !== prevPlayers
       ) {
         dirty.add(key);
       }
@@ -184,6 +194,33 @@ export class GameScene extends Phaser.Scene {
       }
     });
     keysToRemove.forEach((k) => this.playerNumbers.delete(k));
+
+    const markerKeysToRemove: string[] = [];
+    this.playerMarkers.forEach((marker, pKey) => {
+      if (pKey.startsWith(`${key}_`)) {
+        marker.destroy();
+        markerKeysToRemove.push(pKey);
+      }
+    });
+    markerKeysToRemove.forEach((k) => this.playerMarkers.delete(k));
+
+    const heroKeysToRemove: string[] = [];
+    this.heroMarkers.forEach((text, pKey) => {
+      if (pKey.startsWith(`${key}_`)) {
+        text.destroy();
+        heroKeysToRemove.push(pKey);
+      }
+    });
+    heroKeysToRemove.forEach((k) => this.heroMarkers.delete(k));
+
+    const heroBadgeKeysToRemove: string[] = [];
+    this.heroMarkerBadges.forEach((badge, pKey) => {
+      if (pKey.startsWith(`${key}_`)) {
+        badge.destroy();
+        heroBadgeKeysToRemove.push(pKey);
+      }
+    });
+    heroBadgeKeysToRemove.forEach((k) => this.heroMarkerBadges.delete(k));
   }
 
   private renderTile(tile: HexTile) {
@@ -195,68 +232,72 @@ export class GameScene extends Phaser.Scene {
 
     this._redrawTileGraphics(graphics, tile, false, false);
 
-    if (tile.isActive !== false) {
-      const terrain = terrainData[tile.terrain];
-      if (terrain?.icon) {
-        let terrainSymbol = "";
-        switch (tile.terrain) {
-          case "lake":
-            terrainSymbol = "🌊";
-            break;
-          case "river":
-            terrainSymbol = "💧";
-            break;
-          case "mountain":
-            terrainSymbol = "⛰️";
-            break;
-          case "desert":
-            terrainSymbol = "🏜️";
-            break;
-          case "plains":
-            terrainSymbol = "💎";
-            break;
-          case "forest":
-            terrainSymbol = "🌲";
-            break;
-        }
-
-        if (terrainSymbol) {
-          const iconText = this.add
-            .text(pixel.x, pixel.y, terrainSymbol, {
-              fontSize: "16px",
-              align: "center",
-            })
-            .setOrigin(0.5)
-            .setDepth(GameConfig.rendering.terrainIconDepth);
-          this.tileTerrainIcons.set(key, iconText);
-        }
-      }
-    }
-
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
       const playerCount = tile.players.length;
       tile.players.forEach((player, index) => {
-        const offsetY = index * 20 - (playerCount - 1) * 10;
+        const columns = Math.ceil(Math.sqrt(playerCount));
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const spacing = 18;
+        const offsetX = (col - (columns - 1) / 2) * spacing;
+        const offsetY = (row - (Math.ceil(playerCount / columns) - 1) / 2) * spacing;
+        const markerKey = `${key}_${player.id}`;
+        const teamColor = Phaser.Display.Color.HexStringToColor(player.color).color;
+
+        const marker = this.add.graphics();
+        marker.fillStyle(0x0f172a, 0.92);
+        marker.fillCircle(pixel.x + offsetX, pixel.y + offsetY, 11);
+        marker.lineStyle(3, teamColor, 1);
+        marker.strokeCircle(pixel.x + offsetX, pixel.y + offsetY, 11);
+        marker.lineStyle(1, 0xffffff, 0.75);
+        marker.strokeCircle(pixel.x + offsetX, pixel.y + offsetY, 7);
+        marker.setDepth(GameConfig.rendering.playerNumberDepth - 1);
+        this.playerMarkers.set(markerKey, marker);
 
         // Player number circle
         const playerText = this.add
-          .text(pixel.x, pixel.y + offsetY, player.number.toString(), {
-            fontSize: "14px",
+          .text(pixel.x + offsetX, pixel.y + offsetY, player.number.toString(), {
+            fontSize: "12px",
             color: "#ffffff",
-            backgroundColor: "#DC2626",
-            padding: { x: 6, y: 4 },
+            fontStyle: "bold",
+            stroke: "#020617",
+            strokeThickness: 3,
           })
           .setOrigin(0.5)
           .setDepth(GameConfig.rendering.playerNumberDepth);
 
-        // Make it circular
-        playerText.setStyle({
-          ...playerText.style,
-          borderRadius: "50%",
-        });
+        this.playerNumbers.set(markerKey, playerText);
 
-        this.playerNumbers.set(`${key}_${player.id}`, playerText);
+        const hero = this.heroes.find(h => h.ownerId === player.id);
+        const heroClass = hero ? heroClasses[hero.classId] : null;
+        if (hero && heroClass) {
+          const heroX = pixel.x + offsetX + 10;
+          const heroY = pixel.y + offsetY - 11;
+          const heroColor = this.heroClassColor(hero.classId);
+          const heroHealth = Phaser.Math.Clamp(hero.hp / Math.max(hero.maxHp, 1), 0, 1);
+          const heroBadge = this.add.graphics();
+          heroBadge.fillStyle(0x020617, 0.9);
+          heroBadge.fillCircle(heroX, heroY, 10);
+          heroBadge.fillStyle(heroColor, 0.95);
+          heroBadge.fillCircle(heroX, heroY, 7);
+          heroBadge.lineStyle(2, 0xffffff, 0.9);
+          heroBadge.beginPath();
+          heroBadge.arc(heroX, heroY, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * heroHealth, false);
+          heroBadge.strokePath();
+          heroBadge.setDepth(GameConfig.rendering.playerNumberDepth + 1);
+          this.heroMarkerBadges.set(markerKey, heroBadge);
+
+          const heroText = this.add
+            .text(heroX, heroY, heroClass.icon, {
+              fontSize: "11px",
+              stroke: "#020617",
+              strokeThickness: 2,
+            })
+            .setOrigin(0.5)
+            .setDepth(GameConfig.rendering.playerNumberDepth + 2);
+          this.heroMarkers.set(markerKey, heroText);
+        }
       });
     }
 
@@ -309,9 +350,9 @@ export class GameScene extends Phaser.Scene {
     ).color;
 
     // Determine stroke style based on state
-    let strokeColor = 0x666666;
-    let strokeAlpha = 0.5;
-    let strokeWidth = 1;
+    let strokeColor = 0x0f172a;
+    let strokeAlpha = 0.85;
+    let strokeWidth = 2;
 
     if (isSelected) {
       strokeColor = 0xffff00;
@@ -323,8 +364,10 @@ export class GameScene extends Phaser.Scene {
       strokeWidth = 2;
     }
 
-    // Draw the hex tile
-    // console.log("Drawing hex tile at", tile.coords, "with terrain", terrain.name, "and depth", y);
+    if (isSelected || isHovered) {
+      this.drawTileHalo(graphics, isSelected ? 0xfacc15 : 0xffffff, isSelected ? 0.44 : 0.24);
+    }
+
     this.drawHex(
       graphics,
       baseColor,
@@ -333,6 +376,7 @@ export class GameScene extends Phaser.Scene {
       strokeWidth,
       strokeAlpha
     );
+    this.drawTerrainDetails(graphics, tile, baseColor);
     // Farthest (small y) drawn first, then closer on top
     graphics.setDepth(Math.round(y + GameConfig.rendering.tileDepthOffset));
   }
@@ -357,9 +401,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Draw hex shape
+    this.drawTopDownShadow(graphics);
     graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
-    graphics.fillStyle(
-      Phaser.Display.Color.HexStringToColor(terrain.color).color
+    const lightColor = this.mixColor(baseColor, 0xffffff, 0.18);
+    const darkColor = this.mixColor(baseColor, 0x000000, 0.2);
+    graphics.fillGradientStyle(
+      lightColor,
+      lightColor,
+      darkColor,
+      darkColor,
+      1,
+      1,
+      1,
+      1
     );
 
     const hexPoints = getHexPoints(0, 0, this.hexSize);
@@ -371,6 +425,276 @@ export class GameScene extends Phaser.Scene {
     graphics.closePath();
     graphics.fillPath();
     graphics.strokePath();
+    this.drawTopDownRim(graphics, lightColor, darkColor);
+  }
+
+  private drawTerrainDetails(
+    graphics: Phaser.GameObjects.Graphics,
+    tile: HexTile,
+    baseColor: number
+  ) {
+    const active = tile.isActive !== false;
+    const detailColor = this.mixColor(baseColor, 0xffffff, active ? 0.35 : 0.18);
+    const shadowColor = this.mixColor(baseColor, 0x000000, 0.35);
+    const size = this.hexSize;
+
+    this.drawSurfaceGrain(graphics, tile, baseColor, active);
+    graphics.lineStyle(1.5, detailColor, active ? 0.65 : 0.25);
+
+    switch (tile.terrain) {
+      case "lake":
+        this.drawWaterLines(graphics, size, detailColor);
+        graphics.lineStyle(1.1, 0xffffff, active ? 0.28 : 0.1);
+        graphics.strokeCircle(-size * 0.12, size * 0.08, size * 0.18);
+        graphics.strokeCircle(size * 0.24, -size * 0.14, size * 0.12);
+        break;
+      case "river":
+        graphics.lineStyle(5, shadowColor, active ? 0.35 : 0.12);
+        this.drawSinuousLine(graphics, [
+          { x: -size * 0.55, y: -size * 0.18 },
+          { x: -size * 0.3, y: size * 0.05 },
+          { x: -size * 0.08, y: size * 0.18 },
+          { x: size * 0.2, y: size * 0.1 },
+          { x: size * 0.55, y: -size * 0.08 },
+        ]);
+        graphics.lineStyle(3, detailColor, active ? 0.7 : 0.3);
+        this.drawSinuousLine(graphics, [
+          { x: -size * 0.52, y: -size * 0.15 },
+          { x: -size * 0.28, y: size * 0.06 },
+          { x: -size * 0.08, y: size * 0.16 },
+          { x: size * 0.18, y: size * 0.08 },
+          { x: size * 0.5, y: -size * 0.05 },
+        ]);
+        graphics.lineStyle(1.5, 0xffffff, active ? 0.35 : 0.15);
+        this.drawSinuousLine(graphics, [
+          { x: -size * 0.35, y: size * 0.02 },
+          { x: -size * 0.08, y: size * 0.18 },
+          { x: size * 0.16, y: size * 0.16 },
+          { x: size * 0.35, y: size * 0.08 },
+        ]);
+        break;
+      case "mountain":
+        graphics.fillStyle(shadowColor, active ? 0.75 : 0.35);
+        graphics.fillTriangle(-size * 0.48, size * 0.35, -size * 0.08, -size * 0.45, size * 0.18, size * 0.35);
+        graphics.fillStyle(detailColor, active ? 0.85 : 0.35);
+        graphics.fillTriangle(-size * 0.16, size * 0.28, size * 0.18, -size * 0.38, size * 0.52, size * 0.28);
+        graphics.fillStyle(0xffffff, active ? 0.45 : 0.16);
+        graphics.fillTriangle(-size * 0.12, -size * 0.36, -size * 0.08, -size * 0.45, -size * 0.02, -size * 0.32);
+        graphics.fillTriangle(size * 0.14, -size * 0.3, size * 0.18, -size * 0.38, size * 0.25, -size * 0.28);
+        graphics.lineStyle(1.3, shadowColor, active ? 0.62 : 0.2);
+        graphics.beginPath();
+        graphics.moveTo(-size * 0.08, -size * 0.28);
+        graphics.lineTo(-size * 0.18, size * 0.1);
+        graphics.lineTo(-size * 0.04, size * 0.28);
+        graphics.moveTo(size * 0.2, -size * 0.24);
+        graphics.lineTo(size * 0.08, size * 0.05);
+        graphics.lineTo(size * 0.22, size * 0.24);
+        graphics.strokePath();
+        break;
+      case "desert":
+        for (let i = 0; i < 3; i++) {
+          const y = -size * 0.22 + i * size * 0.22;
+          this.drawSinuousLine(graphics, [
+            { x: -size * 0.45, y },
+            { x: -size * 0.22, y: y - size * 0.11 },
+            { x: size * 0.08, y: y - size * 0.08 },
+            { x: size * 0.35, y },
+          ]);
+        }
+        graphics.fillStyle(this.mixColor(baseColor, 0xffffff, 0.45), active ? 0.28 : 0.1);
+        graphics.fillCircle(-size * 0.1, -size * 0.05, 1.4);
+        graphics.fillCircle(size * 0.28, size * 0.18, 1.2);
+        graphics.fillCircle(-size * 0.34, size * 0.17, 1.1);
+        break;
+      case "plains":
+        graphics.fillStyle(detailColor, active ? 0.65 : 0.25);
+        graphics.fillCircle(-size * 0.28, -size * 0.1, 2.5);
+        graphics.fillCircle(size * 0.18, size * 0.08, 2.2);
+        graphics.fillCircle(size * 0.34, -size * 0.22, 1.8);
+        graphics.lineStyle(1.2, detailColor, active ? 0.45 : 0.18);
+        graphics.beginPath();
+        graphics.moveTo(-size * 0.45, size * 0.22);
+        graphics.lineTo(-size * 0.3, size * 0.08);
+        graphics.lineTo(-size * 0.18, size * 0.24);
+        graphics.moveTo(size * 0.05, -size * 0.28);
+        graphics.lineTo(size * 0.16, -size * 0.42);
+        graphics.lineTo(size * 0.28, -size * 0.26);
+        graphics.moveTo(size * 0.28, size * 0.28);
+        graphics.lineTo(size * 0.38, size * 0.14);
+        graphics.lineTo(size * 0.48, size * 0.28);
+        graphics.strokePath();
+        break;
+      case "forest":
+        [-0.36, -0.12, 0.14, 0.36].forEach((x, index) => {
+          const y = index % 2 === 0 ? 0.08 : -0.16;
+          graphics.fillStyle(detailColor, active ? 0.75 : 0.28);
+          graphics.fillTriangle(size * x - 7, size * y + 8, size * x, size * y - 11, size * x + 7, size * y + 8);
+          graphics.fillStyle(this.mixColor(detailColor, 0xffffff, 0.18), active ? 0.45 : 0.14);
+          graphics.fillCircle(size * x - 3, size * y - 1, 3);
+          graphics.fillStyle(shadowColor, active ? 0.85 : 0.28);
+          graphics.fillRect(size * x - 1.5, size * y + 6, 3, 8);
+        });
+        break;
+    }
+
+    if (!active) {
+      graphics.fillStyle(0x020617, 0.38);
+      const hexPoints = getHexPoints(0, 0, size);
+      graphics.beginPath();
+      graphics.moveTo(hexPoints[0].x, hexPoints[0].y);
+      for (let i = 1; i < hexPoints.length; i++) {
+        graphics.lineTo(hexPoints[i].x, hexPoints[i].y);
+      }
+      graphics.closePath();
+      graphics.fillPath();
+      graphics.lineStyle(1, 0xffffff, 0.14);
+      for (let x = -size; x <= size; x += 10) {
+        graphics.beginPath();
+        graphics.moveTo(x - size * 0.25, -size * 0.55);
+        graphics.lineTo(x + size * 0.25, size * 0.55);
+        graphics.strokePath();
+      }
+    }
+  }
+
+  private drawWaterLines(
+    graphics: Phaser.GameObjects.Graphics,
+    size: number,
+    color: number
+  ) {
+    [-0.24, 0, 0.24].forEach((offset) => {
+      graphics.lineStyle(1.6, color, 0.62);
+      this.drawSinuousLine(graphics, [
+        { x: -size * 0.42, y: size * offset },
+        { x: -size * 0.18, y: size * (offset - 0.12) },
+        { x: size * 0.04, y: size * offset },
+        { x: size * 0.26, y: size * (offset + 0.12) },
+        { x: size * 0.48, y: size * offset },
+      ]);
+    });
+  }
+
+  private drawSinuousLine(
+    graphics: Phaser.GameObjects.Graphics,
+    points: Array<{ x: number; y: number }>
+  ) {
+    if (points.length === 0) return;
+    graphics.beginPath();
+    graphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      graphics.lineTo(points[i].x, points[i].y);
+    }
+    graphics.strokePath();
+  }
+
+  private drawTileHalo(
+    graphics: Phaser.GameObjects.Graphics,
+    color: number,
+    alpha: number
+  ) {
+    const hexPoints = getHexPoints(0, 0, this.hexSize + 4);
+    graphics.lineStyle(8, color, alpha);
+    graphics.beginPath();
+    graphics.moveTo(hexPoints[0].x, hexPoints[0].y);
+    for (let i = 1; i < hexPoints.length; i++) {
+      graphics.lineTo(hexPoints[i].x, hexPoints[i].y);
+    }
+    graphics.closePath();
+    graphics.strokePath();
+  }
+
+  private drawTopDownShadow(graphics: Phaser.GameObjects.Graphics) {
+    const hexPoints = getHexPoints(0, 0, this.hexSize);
+    graphics.fillStyle(0x020617, 0.26);
+    graphics.beginPath();
+    graphics.moveTo(hexPoints[0].x + 2, hexPoints[0].y + 4);
+    for (let i = 1; i < hexPoints.length; i++) {
+      graphics.lineTo(hexPoints[i].x + 2, hexPoints[i].y + 4);
+    }
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawTopDownRim(
+    graphics: Phaser.GameObjects.Graphics,
+    lightColor: number,
+    darkColor: number
+  ) {
+    const points = getHexPoints(0, 0, this.hexSize - 2);
+    graphics.lineStyle(1.8, lightColor, 0.38);
+    graphics.beginPath();
+    graphics.moveTo(points[5].x, points[5].y);
+    graphics.lineTo(points[0].x, points[0].y);
+    graphics.lineTo(points[1].x, points[1].y);
+    graphics.strokePath();
+
+    graphics.lineStyle(2.2, darkColor, 0.34);
+    graphics.beginPath();
+    graphics.moveTo(points[2].x, points[2].y);
+    graphics.lineTo(points[3].x, points[3].y);
+    graphics.lineTo(points[4].x, points[4].y);
+    graphics.strokePath();
+  }
+
+  private drawSurfaceGrain(
+    graphics: Phaser.GameObjects.Graphics,
+    tile: HexTile,
+    baseColor: number,
+    active: boolean
+  ) {
+    const size = this.hexSize;
+    const grainColor = this.mixColor(baseColor, 0xffffff, 0.32);
+    const shadowGrain = this.mixColor(baseColor, 0x000000, 0.24);
+
+    for (let i = 0; i < 7; i++) {
+      const x = (this.tileNoise(tile, i * 2) - 0.5) * size * 1.15;
+      const y = (this.tileNoise(tile, i * 2 + 1) - 0.5) * size * 0.95;
+      const radius = 0.8 + this.tileNoise(tile, i + 19) * 1.4;
+      graphics.fillStyle(i % 2 === 0 ? grainColor : shadowGrain, active ? 0.16 : 0.06);
+      graphics.fillCircle(x, y, radius);
+    }
+  }
+
+  private tileNoise(tile: HexTile, salt: number): number {
+    const seed = (
+      tile.coords.q * 73856093
+      ^ tile.coords.r * 19349663
+      ^ tile.coords.s * 83492791
+      ^ salt * 2654435761
+    ) >>> 0;
+    return (seed % 1000) / 1000;
+  }
+
+  private mixColor(baseColor: number, targetColor: number, amount: number): number {
+    return Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.IntegerToColor(baseColor),
+      Phaser.Display.Color.IntegerToColor(targetColor),
+      100,
+      Math.round(amount * 100)
+    ).color;
+  }
+
+  private heroClassColor(classId: string): number {
+    switch (classId) {
+      case "knight":
+        return 0x60a5fa;
+      case "barbarian":
+        return 0xf97316;
+      case "ranger":
+        return 0x22c55e;
+      case "paladin":
+        return 0xfacc15;
+      case "sorceress":
+        return 0xd946ef;
+      case "wizard":
+        return 0x818cf8;
+      case "druid":
+        return 0x84cc16;
+      case "necromancer":
+        return 0xa855f7;
+      default:
+        return 0xe2e8f0;
+    }
   }
 
   private drawIsometricHex(
@@ -424,7 +748,16 @@ export class GameScene extends Phaser.Scene {
     graphics.fillPath();
 
     // 1. Top face (main hex surface) - Draw last to be on top
-    graphics.fillStyle(topColor);
+    graphics.fillGradientStyle(
+      this.mixColor(topColor, 0xffffff, 0.16),
+      this.mixColor(topColor, 0xffffff, 0.1),
+      this.mixColor(topColor, 0x000000, 0.18),
+      this.mixColor(topColor, 0x000000, 0.14),
+      1,
+      1,
+      1,
+      1
+    );
     graphics.beginPath();
     graphics.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
@@ -453,7 +786,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1, 0x444444, isIsometricGrid ? 0.2 : 0.3);
+    this.gridGraphics.lineStyle(1.5, 0xe2e8f0, isIsometricGrid ? 0.34 : 0.42);
+    this.gridGraphics.setDepth(GameConfig.rendering.terrainIconDepth - 5);
 
     // Get an array of [key, tile], sort by depth
     const sorted = Object.entries(this.gameData).sort(
@@ -513,6 +847,15 @@ export class GameScene extends Phaser.Scene {
 
     this.playerNumbers.forEach((text) => text.destroy());
     this.playerNumbers.clear();
+
+    this.playerMarkers.forEach((marker) => marker.destroy());
+    this.playerMarkers.clear();
+
+    this.heroMarkers.forEach((text) => text.destroy());
+    this.heroMarkers.clear();
+
+    this.heroMarkerBadges.forEach((badge) => badge.destroy());
+    this.heroMarkerBadges.clear();
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
@@ -556,6 +899,23 @@ export class GameScene extends Phaser.Scene {
     if (this.isInitialized) {
       this.renderWorld(false);
     }
+  }
+
+  public updateHeroes(heroes: Hero[]) {
+    this.heroes = heroes;
+    if (this.isInitialized) {
+      this.renderWorld();
+    }
+  }
+
+  private playerSignature(players?: HexTile["players"]): string {
+    return (players ?? [])
+      .map(player => {
+        const hero = this.heroes.find(h => h.ownerId === player.id);
+        return `${player.id}:${player.number}:${player.color}:${hero?.classId ?? ""}`;
+      })
+      .sort()
+      .join("|");
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

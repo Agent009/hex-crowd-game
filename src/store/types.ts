@@ -24,7 +24,7 @@ export interface PlayerStats {
 export interface ActivityEvent {
   id: string;
   timestamp: number;
-  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect' | 'trade' | 'victory';
+  type: 'movement' | 'item_usage' | 'crafting' | 'harvesting' | 'terrain_effect' | 'damage' | 'healing' | 'disaster' | 'elimination' | 'round_start' | 'phase_change' | 'phase_effect' | 'trade' | 'victory' | 'combat' | 'hero';
   subtype?: 'ap_renewal' | 'terrain_effect' | 'disaster';
   playerId?: string;
   playerName?: string;
@@ -39,6 +39,10 @@ export interface ActivityEvent {
     healing?: number;
     disaster?: string;
     affectedPlayers?: string[];
+    hero?: string;
+    spell?: string;
+    skill?: string;
+    unit?: string;
   };
 }
 
@@ -59,6 +63,66 @@ export interface VictoryResult {
   survivingPlayers: string[];
 }
 
+export interface ArmyUnitStack {
+  unitId: string;
+  count: number;
+}
+
+export interface HeroSkillState {
+  skillId: string;
+  rank: number;
+}
+
+export interface Hero {
+  id: string;
+  classId: string;
+  name: string;
+  ownerId: string;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  attack: number;
+  defense: number;
+  spellPower: number;
+  knowledge: number;
+  hp: number;
+  maxHp: number;
+  mana: number;
+  maxMana: number;
+  skillPoints: number;
+  skills: HeroSkillState[];
+  knownSpells: string[];
+  army: ArmyUnitStack[];
+  /** Temporary combat defense bonus (e.g. Stone Skin); cleared at AP renewal. */
+  defenseBuff: number;
+}
+
+export interface CombatSideSummary {
+  playerId: string;
+  playerName: string;
+  playerNumber: number;
+  heroName: string | null;
+  heroClassId: string | null;
+  power: number;
+  roll: number;
+  armyLosses: ArmyUnitStack[];
+  heroLost: boolean;
+  hpDamage: number;
+  xpGained: number;
+}
+
+export interface CombatResult {
+  id: string;
+  attacker: CombatSideSummary;
+  defender: CombatSideSummary;
+  /** null on a stand-off (no decisive winner). */
+  winnerId: string | null;
+  location: CubeCoords;
+  terrain: string;
+  roundNumber: number;
+  timestamp: number;
+}
+
 export interface PlayerState {
   players: Player[];
   teams: Team[];
@@ -71,6 +135,9 @@ export interface PlayerState {
   tradeProposals: TradeProposal[];
   globalItemQuantities: { [itemId: string]: number };
   victoryResult: VictoryResult | null;
+  heroes: Hero[];
+  selectedHeroId: string | null;
+  lastCombatResult: CombatResult | null;
 }
 
 export interface PhaseState {

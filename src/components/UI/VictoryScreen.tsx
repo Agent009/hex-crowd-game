@@ -6,7 +6,7 @@ import { Trophy, Crown, Users, RotateCcw, Home, Star, Shield } from 'lucide-reac
 
 export const VictoryScreen: React.FC = () => {
   const dispatch = useDispatch();
-  const { victoryResult, activityEvents, teams, players } = useSelector((state: RootState) => state.game);
+  const { victoryResult, activityEvents, teams } = useSelector((state: RootState) => state.game);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { coordsToKey, areAdjacent, CubeCoords } from '../utils/hexGrid';
+import { coordsToKey, areAdjacent, cubeDistance, CubeCoords } from '../utils/hexGrid';
 import { itemDatabase } from '../data/harvestData';
 import {
   maxPlayers,
@@ -16,6 +16,22 @@ import {
 } from '../data/gameData';
 import { isCraftable } from '../utils/utils';
 import {
+  createHero,
+  grantHeroXp,
+  recalcHeroDerivedStats,
+  heroClasses,
+  HERO_RECRUIT_AP_COST,
+  HERO_RECRUIT_RESOURCE_COST,
+  MAX_HEROES_PER_PLAYER,
+  HERO_BASE_MANA_REGEN,
+  REST_HP_PER_AP,
+  REST_MANA_PER_AP,
+} from '../data/heroesData';
+import { skillsData, skillEffectAtRank } from '../data/skillsData';
+import { spellsData, spellEffectValue } from '../data/spellsData';
+import { unitsData, MAX_ARMY_SIZE, armyUnitCount } from '../data/unitsData';
+import { resolveCombat, COMBAT_AP_COST, CombatSideInput } from '../game/combat';
+import {
   GamePhase,
   PlayerStats,
   ActivityEvent,
@@ -23,6 +39,8 @@ import {
   PhaseState,
   TradeProposal,
   VictoryResult,
+  Hero,
+  CombatResult,
 } from './types';
 
 export type { GamePhase, PlayerStats, ActivityEvent, TradeProposal, VictoryResult };
@@ -117,11 +135,42 @@ const initialState: GameState = {
   tradeProposals: [],
   globalItemQuantities: buildInitialItemQuantities(),
   victoryResult: null,
+  heroes: [],
+  selectedHeroId: null,
+  lastCombatResult: null,
 
   currentPhase: 'round_start',
   phaseStartTime: 0,
   phaseTimer: 0,
   showPhaseOverlay: false,
+};
+
+/** Append an activity event with generated id/timestamp and trim the log. */
+const pushEvent = (
+  state: GameState,
+  event: Omit<ActivityEvent, 'id' | 'timestamp'>
+): void => {
+  state.activityEvents.unshift({
+    id: `${Date.now()}_${Math.random()}`,
+    timestamp: Date.now(),
+    ...event,
+  });
+  if (state.activityEvents.length > MAX_ACTIVITY_EVENTS) {
+    state.activityEvents = state.activityEvents.slice(0, MAX_ACTIVITY_EVENTS);
+  }
+};
+
+const findHeroByOwner = (state: GameState, playerId: string): Hero | undefined =>
+  state.heroes.find(h => h.ownerId === playerId);
+
+const removeHeroesOfPlayer = (state: GameState, playerId: string): void => {
+  state.heroes = state.heroes.filter(h => {
+    if (h.ownerId !== playerId) return true;
+    if (state.selectedHeroId === h.id) {
+      state.selectedHeroId = null;
+    }
+    return false;
+  });
 };
 
 const consumeItemUse = (
@@ -335,6 +384,7 @@ const removeEliminatedPlayers = (
     }
 
     delete state.playerStats[player.id];
+    removeHeroesOfPlayer(state, player.id);
 
     if (state.currentPlayer?.id === player.id) {
       state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
@@ -426,8 +476,8 @@ const gameSlice = createSlice({
   name: 'game',
   initialState,
   reducers: {
-    joinGame: (state, action: PayloadAction<{ playerName: string }>) => {
-      const { playerName } = action.payload;
+    joinGame: (state, action: PayloadAction<{ playerName: string; playerId?: string }>) => {
+      const { playerName, playerId } = action.payload;
 
       if (state.players.length >= maxPlayers) return;
 
@@ -443,7 +493,7 @@ const gameSlice = createSlice({
       const assignedTeam = teamPlayerCounts[0].team;
 
       const newPlayer: Player = {
-        id: `player_${Date.now()}_${Math.random()}`,
+        id: playerId ?? `player_${Date.now()}_${Math.random()}`,
         name: playerName,
         number: playerNumber,
         teamId: assignedTeam.id,
@@ -485,6 +535,7 @@ const gameSlice = createSlice({
 
       state.players.splice(playerIndex, 1);
       delete state.playerStats[playerId];
+      removeHeroesOfPlayer(state, playerId);
 
       if (state.currentPlayer?.id === playerId) {
         state.currentPlayer = state.players.length > 0 ? state.players[0] : null;
@@ -571,6 +622,15 @@ const gameSlice = createSlice({
         }
       }
 
+      // The player's hero travels with them (H7); a hero skilled in
+      // logistics makes the journey cheaper.
+      const movingHero = findHeroByOwner(state, playerId);
+      if (movingHero) {
+        const logisticsRank = movingHero.skills.find(s => s.skillId === 'logistics')?.rank ?? 0;
+        const discount = skillEffectAtRank('logistics', logisticsRank);
+        movementCost = Math.max(1, movementCost - discount);
+      }
+
       if (playerStats.actionPoints < movementCost) return;
 
       playerStats.actionPoints -= movementCost;
@@ -648,6 +708,13 @@ const gameSlice = createSlice({
                 state.playerStats[player.id].actionPoints += apIncrement;
                 state.playerStats[player.id].statusEffects = [];
               }
+            });
+            // Heroes recover mana and shed temporary combat buffs.
+            state.heroes.forEach(hero => {
+              const mysticismRank = hero.skills.find(s => s.skillId === 'mysticism')?.rank ?? 0;
+              const regen = HERO_BASE_MANA_REGEN + skillEffectAtRank('mysticism', mysticismRank);
+              hero.mana = Math.min(hero.maxMana, hero.mana + regen);
+              hero.defenseBuff = 0;
             });
             state.activityEvents.unshift({
               id: `${Date.now()}_${Math.random()}`,
@@ -1125,6 +1192,452 @@ const gameSlice = createSlice({
       proposal.status = 'cancelled';
     },
 
+    selectHero: (state, action: PayloadAction<{ heroId: string | null }>) => {
+      const { heroId } = action.payload;
+      if (heroId === null) {
+        state.selectedHeroId = null;
+        return;
+      }
+      if (state.heroes.some(h => h.id === heroId)) {
+        state.selectedHeroId = heroId;
+      }
+    },
+
+    recruitHero: (state, action: PayloadAction<{ playerId: string; classId: string }>) => {
+      const { playerId, classId } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
+      const classData = heroClasses[classId];
+
+      if (!player || !playerStats || !classData) return;
+      if (state.currentPhase !== 'interaction') return;
+
+      const ownedHeroes = state.heroes.filter(h => h.ownerId === playerId).length;
+      if (ownedHeroes >= MAX_HEROES_PER_PLAYER) return;
+
+      if (playerStats.actionPoints < HERO_RECRUIT_AP_COST) return;
+      for (const [resourceId, required] of Object.entries(HERO_RECRUIT_RESOURCE_COST)) {
+        if ((playerStats.resources[resourceId] || 0) < required) return;
+      }
+
+      playerStats.actionPoints -= HERO_RECRUIT_AP_COST;
+      for (const [resourceId, required] of Object.entries(HERO_RECRUIT_RESOURCE_COST)) {
+        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) - required;
+      }
+
+      const heroId = `hero_${Date.now()}_${Math.random()}`;
+      const hero = createHero(classId, playerId, heroId, player.number);
+      if (!hero) return;
+
+      state.heroes.push(hero);
+      state.selectedHeroId = hero.id;
+
+      pushEvent(state, {
+        type: 'hero',
+        playerId,
+        playerName: player.name,
+        playerNumber: player.number,
+        message: `${player.name} recruited ${hero.name} the ${classData.name}!`,
+        details: { hero: hero.name },
+      });
+    },
+
+    restHero: (state, action: PayloadAction<{ playerId: string }>) => {
+      const { playerId } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
+      const hero = findHeroByOwner(state, playerId);
+
+      if (!player || !playerStats || !hero) return;
+      if (state.currentPhase !== 'interaction') return;
+      if (playerStats.actionPoints < 1) return;
+
+      const apSpent = playerStats.actionPoints;
+      playerStats.actionPoints = 0;
+
+      const hpBefore = hero.hp;
+      const manaBefore = hero.mana;
+      hero.hp = Math.min(hero.maxHp, hero.hp + apSpent * REST_HP_PER_AP);
+      hero.mana = Math.min(hero.maxMana, hero.mana + apSpent * REST_MANA_PER_AP);
+
+      const hpGain = hero.hp - hpBefore;
+      const manaGain = hero.mana - manaBefore;
+      playerStats.statusEffects.push(`${hero.name} rested (+${hpGain} HP, +${manaGain} mana)`);
+
+      pushEvent(state, {
+        type: 'hero',
+        playerId,
+        playerName: player.name,
+        playerNumber: player.number,
+        message: `${hero.name} rested for ${apSpent} AP, recovering ${hpGain} HP and ${manaGain} mana`,
+        details: { hero: hero.name, healing: hpGain },
+      });
+    },
+
+    learnSkill: (state, action: PayloadAction<{ playerId: string; skillId: string }>) => {
+      const { playerId, skillId } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const hero = findHeroByOwner(state, playerId);
+      const skillData = skillsData[skillId];
+
+      if (!player || !hero || !skillData) return;
+      if (hero.skillPoints < 1) return;
+
+      const existing = hero.skills.find(s => s.skillId === skillId);
+      if (existing) {
+        if (existing.rank >= skillData.maxRank) return;
+        existing.rank += 1;
+      } else {
+        hero.skills.push({ skillId, rank: 1 });
+      }
+
+      hero.skillPoints -= 1;
+      recalcHeroDerivedStats(hero);
+
+      const rank = hero.skills.find(s => s.skillId === skillId)?.rank ?? 1;
+      pushEvent(state, {
+        type: 'hero',
+        playerId,
+        playerName: player.name,
+        playerNumber: player.number,
+        message: `${hero.name} learned ${skillData.name} (rank ${rank})`,
+        details: { hero: hero.name, skill: skillData.name },
+      });
+    },
+
+    castSpell: (state, action: PayloadAction<{
+      playerId: string;
+      spellId: string;
+      targetPlayerId?: string;
+    }>) => {
+      const { playerId, spellId, targetPlayerId } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
+      const hero = findHeroByOwner(state, playerId);
+      const spell = spellsData[spellId];
+
+      if (!player || !playerStats || !hero || !spell) return;
+      if (state.currentPhase !== 'interaction') return;
+      if (!hero.knownSpells.includes(spellId)) return;
+      if (hero.mana < spell.manaCost) return;
+
+      const value = spellEffectValue(spell, hero.spellPower);
+
+      if (spell.target === 'enemy') {
+        if (!targetPlayerId) return;
+        const target = state.players.find(p => p.id === targetPlayerId);
+        const targetStats = state.playerStats[targetPlayerId];
+        if (!target || !targetStats) return;
+        if (target.teamId === player.teamId) return;
+        if (cubeDistance(player.position, target.position) > spell.range) return;
+
+        hero.mana -= spell.manaCost;
+
+        targetStats.hp = Math.max(0, targetStats.hp - value);
+        targetStats.statusEffects.push(`${spell.name}: ${value} damage from ${hero.name}`);
+
+        pushEvent(state, {
+          type: 'hero',
+          playerId: target.id,
+          playerName: target.name,
+          playerNumber: target.number,
+          message: `${hero.name} cast ${spell.name} on ${target.name} for ${value} damage!`,
+          details: { hero: hero.name, spell: spell.name, damage: value },
+        });
+
+        if (spell.kind === 'drain') {
+          const hpBefore = playerStats.hp;
+          playerStats.hp = Math.min(10, playerStats.hp + value);
+          const healed = playerStats.hp - hpBefore;
+          if (healed > 0) {
+            pushEvent(state, {
+              type: 'healing',
+              playerId,
+              playerName: player.name,
+              playerNumber: player.number,
+              message: `${player.name} drained ${healed} HP from ${target.name}`,
+              details: { hero: hero.name, spell: spell.name, healing: healed },
+            });
+          }
+        }
+        return;
+      }
+
+      // Self-targeted spells
+      hero.mana -= spell.manaCost;
+
+      switch (spell.kind) {
+        case 'heal': {
+          const hpBefore = playerStats.hp;
+          playerStats.hp = Math.min(10, playerStats.hp + value);
+          const healed = playerStats.hp - hpBefore;
+          playerStats.statusEffects.push(`+${healed} HP (${spell.name})`);
+          pushEvent(state, {
+            type: 'healing',
+            playerId,
+            playerName: player.name,
+            playerNumber: player.number,
+            message: `${hero.name} cast ${spell.name}, restoring ${healed} HP to ${player.name}`,
+            details: { hero: hero.name, spell: spell.name, healing: healed },
+          });
+          break;
+        }
+        case 'buff': {
+          hero.defenseBuff += value;
+          playerStats.statusEffects.push(`${spell.name}: +${value} defense until next round`);
+          pushEvent(state, {
+            type: 'hero',
+            playerId,
+            playerName: player.name,
+            playerNumber: player.number,
+            message: `${hero.name} cast ${spell.name} (+${value} defense until next round)`,
+            details: { hero: hero.name, spell: spell.name },
+          });
+          break;
+        }
+        case 'energize': {
+          playerStats.actionPoints += value;
+          playerStats.statusEffects.push(`+${value} AP (${spell.name})`);
+          pushEvent(state, {
+            type: 'hero',
+            playerId,
+            playerName: player.name,
+            playerNumber: player.number,
+            message: `${hero.name} cast ${spell.name}, granting ${player.name} +${value} AP`,
+            details: { hero: hero.name, spell: spell.name },
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    },
+
+    recruitUnit: (state, action: PayloadAction<{ playerId: string; unitId: string }>) => {
+      const { playerId, unitId } = action.payload;
+      const player = state.players.find(p => p.id === playerId);
+      const playerStats = state.playerStats[playerId];
+      const hero = findHeroByOwner(state, playerId);
+      const unit = unitsData[unitId];
+
+      if (!player || !playerStats || !hero || !unit) return;
+      if (state.currentPhase !== 'interaction') return;
+      if (playerStats.actionPoints < unit.apCost) return;
+      if (armyUnitCount(hero.army) >= MAX_ARMY_SIZE) return;
+
+      for (const [resourceId, required] of Object.entries(unit.cost)) {
+        if ((playerStats.resources[resourceId] || 0) < required) return;
+      }
+
+      playerStats.actionPoints -= unit.apCost;
+      for (const [resourceId, required] of Object.entries(unit.cost)) {
+        playerStats.resources[resourceId] = (playerStats.resources[resourceId] || 0) - required;
+      }
+
+      const stack = hero.army.find(s => s.unitId === unitId);
+      if (stack) {
+        stack.count += 1;
+      } else {
+        hero.army.push({ unitId, count: 1 });
+      }
+
+      pushEvent(state, {
+        type: 'hero',
+        playerId,
+        playerName: player.name,
+        playerNumber: player.number,
+        message: `${player.name} recruited a ${unit.name} for ${hero.name}'s army`,
+        details: { hero: hero.name, unit: unit.name },
+      });
+    },
+
+    initiateCombat: (state, action: PayloadAction<{
+      attackerId: string;
+      defenderId: string;
+      tiles: { [key: string]: import('../utils/hexGrid').HexTile };
+    }>) => {
+      const { attackerId, defenderId, tiles } = action.payload;
+      if (state.currentPhase !== 'interaction') return;
+      if (attackerId === defenderId) return;
+
+      const attacker = state.players.find(p => p.id === attackerId);
+      const defender = state.players.find(p => p.id === defenderId);
+      const attackerStats = state.playerStats[attackerId];
+      const defenderStats = state.playerStats[defenderId];
+
+      if (!attacker || !defender || !attackerStats || !defenderStats) return;
+      if (attacker.teamId === defender.teamId) return;
+      if (cubeDistance(attacker.position, defender.position) > 1) return;
+      if (attackerStats.actionPoints < COMBAT_AP_COST) return;
+
+      attackerStats.actionPoints -= COMBAT_AP_COST;
+
+      const attackerHero = findHeroByOwner(state, attackerId) ?? null;
+      const defenderHero = findHeroByOwner(state, defenderId) ?? null;
+
+      const defenderTile = tiles[coordsToKey(defender.position)];
+      const defenderTerrain = defenderTile ? terrainData[defenderTile.terrain] : null;
+
+      const attackerSide: CombatSideInput = {
+        playerId: attackerId,
+        playerHp: attackerStats.hp,
+        hero: attackerHero,
+        terrainDefenseBonus: 0,
+      };
+      const defenderSide: CombatSideInput = {
+        playerId: defenderId,
+        playerHp: defenderStats.hp,
+        hero: defenderHero,
+        terrainDefenseBonus: defenderTerrain?.defenseBonus ?? 0,
+      };
+
+      const outcome = resolveCombat(attackerSide, defenderSide);
+
+      pushEvent(state, {
+        type: 'combat',
+        playerId: attackerId,
+        playerName: attacker.name,
+        playerNumber: attacker.number,
+        message: `${attacker.name} attacked ${defender.name}! (${outcome.attackerPower} vs ${outcome.defenderPower})`,
+        details: { coords: defender.position, damage: outcome.damageToDefender },
+      });
+
+      // Apply army losses, hero damage, and player HP damage to one side.
+      const applyReport = (
+        report: typeof outcome.attackerReport,
+        hero: Hero | null,
+        stats: PlayerStats,
+        sidePlayer: Player
+      ) => {
+        if (hero) {
+          report.armyLosses.forEach(loss => {
+            const stack = hero.army.find(s => s.unitId === loss.unitId);
+            if (stack) {
+              stack.count -= loss.count;
+            }
+            const unit = unitsData[loss.unitId];
+            pushEvent(state, {
+              type: 'combat',
+              playerId: sidePlayer.id,
+              playerName: sidePlayer.name,
+              playerNumber: sidePlayer.number,
+              message: `${sidePlayer.name} lost ${loss.count} ${unit?.name ?? loss.unitId}${loss.count > 1 ? 's' : ''} in battle`,
+              details: { unit: unit?.name },
+            });
+          });
+          hero.army = hero.army.filter(s => s.count > 0);
+
+          if (report.heroHpLoss > 0) {
+            hero.hp = Math.max(0, hero.hp - report.heroHpLoss);
+          }
+          if (report.heroLost) {
+            pushEvent(state, {
+              type: 'combat',
+              playerId: sidePlayer.id,
+              playerName: sidePlayer.name,
+              playerNumber: sidePlayer.number,
+              message: `${hero.name} has fallen in battle!`,
+              details: { hero: hero.name },
+            });
+            removeHeroesOfPlayer(state, sidePlayer.id);
+          }
+        }
+
+        if (report.playerHpDamage > 0) {
+          stats.hp = Math.max(0, stats.hp - report.playerHpDamage);
+          stats.statusEffects.push(`-${report.playerHpDamage} HP (combat)`);
+          pushEvent(state, {
+            type: 'damage',
+            playerId: sidePlayer.id,
+            playerName: sidePlayer.name,
+            playerNumber: sidePlayer.number,
+            message: `${sidePlayer.name} took ${report.playerHpDamage} damage in combat`,
+            details: { damage: report.playerHpDamage },
+          });
+        }
+      };
+
+      applyReport(outcome.defenderReport, defenderHero, defenderStats, defender);
+      applyReport(outcome.attackerReport, attackerHero, attackerStats, attacker);
+
+      // Surviving heroes earn experience.
+      const awardXp = (hero: Hero | null, lost: boolean, amount: number, owner: Player) => {
+        if (!hero || lost) return;
+        const liveHero = findHeroByOwner(state, owner.id);
+        if (!liveHero) return;
+        grantHeroXp(liveHero, amount).forEach(message => {
+          pushEvent(state, {
+            type: 'hero',
+            playerId: owner.id,
+            playerName: owner.name,
+            playerNumber: owner.number,
+            message,
+            details: { hero: liveHero.name },
+          });
+        });
+      };
+
+      awardXp(attackerHero, outcome.attackerReport.heroLost, outcome.attackerXp, attacker);
+      awardXp(defenderHero, outcome.defenderReport.heroLost, outcome.defenderXp, defender);
+
+      const winnerLabel = outcome.winner === 'attacker'
+        ? `${attacker.name} won the engagement`
+        : outcome.winner === 'defender'
+          ? `${defender.name} repelled the attack`
+          : 'The clash ended in a stand-off';
+
+      pushEvent(state, {
+        type: 'combat',
+        message: winnerLabel,
+        details: {},
+      });
+
+      const result: CombatResult = {
+        id: `combat_${Date.now()}_${Math.random()}`,
+        attacker: {
+          playerId: attackerId,
+          playerName: attacker.name,
+          playerNumber: attacker.number,
+          heroName: attackerHero?.name ?? null,
+          heroClassId: attackerHero?.classId ?? null,
+          power: outcome.attackerPower,
+          roll: outcome.attackerRoll,
+          armyLosses: outcome.attackerReport.armyLosses,
+          heroLost: outcome.attackerReport.heroLost,
+          hpDamage: outcome.attackerReport.playerHpDamage,
+          xpGained: outcome.attackerReport.heroLost ? 0 : outcome.attackerXp,
+        },
+        defender: {
+          playerId: defenderId,
+          playerName: defender.name,
+          playerNumber: defender.number,
+          heroName: defenderHero?.name ?? null,
+          heroClassId: defenderHero?.classId ?? null,
+          power: outcome.defenderPower,
+          roll: outcome.defenderRoll,
+          armyLosses: outcome.defenderReport.armyLosses,
+          heroLost: outcome.defenderReport.heroLost,
+          hpDamage: outcome.defenderReport.playerHpDamage,
+          xpGained: outcome.defenderReport.heroLost ? 0 : outcome.defenderXp,
+        },
+        winnerId: outcome.winner === 'attacker'
+          ? attackerId
+          : outcome.winner === 'defender'
+            ? defenderId
+            : null,
+        location: defender.position,
+        terrain: defenderTerrain?.name ?? 'Unknown',
+        roundNumber: state.roundNumber,
+        timestamp: Date.now(),
+      };
+
+      state.lastCombatResult = result;
+    },
+
+    dismissCombatResult: (state) => {
+      state.lastCombatResult = null;
+    },
+
     syncGameState: (_state, action: PayloadAction<GameState>) => {
       return action.payload;
     },
@@ -1160,6 +1673,14 @@ export const {
   acceptTrade,
   rejectTrade,
   cancelTrade,
+  selectHero,
+  recruitHero,
+  restHero,
+  learnSkill,
+  castSpell,
+  recruitUnit,
+  initiateCombat,
+  dismissCombatResult,
   syncGameState,
   returnToLobby,
 } = gameSlice.actions;

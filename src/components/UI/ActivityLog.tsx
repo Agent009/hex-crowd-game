@@ -13,7 +13,9 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
-  X
+  X,
+  Swords,
+  Crown
 } from 'lucide-react';
 import { ActivityEvent } from "../../store/gameSlice";
 
@@ -65,6 +67,8 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
       case 'disaster': return AlertTriangle;
       case 'elimination': return X;
       case 'round_start': return Clock;
+      case 'combat': return Swords;
+      case 'hero': return Crown;
       default: return Zap;
     }
   };
@@ -81,6 +85,8 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
       case 'disaster': return 'text-red-500';
       case 'elimination': return 'text-red-600';
       case 'round_start': return 'text-cyan-400';
+      case 'combat': return 'text-red-300';
+      case 'hero': return 'text-amber-300';
       default: return 'text-slate-400';
     }
   };
@@ -97,7 +103,10 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
     { id: 'elimination', label: 'Eliminations', color: 'text-red-600' },
     { id: 'round_start', label: 'Round Events', color: 'text-cyan-400' },
     { id: 'phase_change', label: 'Phase Changes', color: 'text-blue-400' },
-    { id: 'phase_effect', label: 'Phase Effects', color: 'text-blue-400' }
+    { id: 'phase_effect', label: 'Phase Effects', color: 'text-blue-400' },
+    { id: 'trade', label: 'Trades', color: 'text-teal-400' },
+    { id: 'combat', label: 'Combat', color: 'text-red-300' },
+    { id: 'hero', label: 'Heroes', color: 'text-amber-300' }
   ];
 
   const toggleFilter = (eventType: string) => {
@@ -164,7 +173,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
         <div className="flex items-center space-x-2">
           <Filter className="w-3 h-3 text-slate-400" />
           <div className="flex flex-wrap gap-1">
-            {eventTypes.slice(0, 4).map(type => (
+            {eventTypes.map(type => (
               <button
                 key={type.id}
                 onClick={() => toggleFilter(type.id)}

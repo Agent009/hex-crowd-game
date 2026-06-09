@@ -9,6 +9,7 @@ import {
   TradeProposal,
 } from '../../store/gameSlice';
 import { resourceDatabase } from '../../data/harvestData';
+import { useMultiplayer } from '../../hooks/useMultiplayer';
 import {
   ArrowLeftRight,
   Plus,
@@ -62,10 +63,19 @@ interface ProposalCardProps {
   proposal: TradeProposal;
   currentPlayerId: string;
   players: { id: string; name: string; number: number }[];
+  onAccept: (tradeId: string) => void;
+  onReject: (tradeId: string) => void;
+  onCancel: (tradeId: string) => void;
 }
 
-const ProposalCard: React.FC<ProposalCardProps> = ({ proposal, currentPlayerId, players }) => {
-  const dispatch = useDispatch();
+const ProposalCard: React.FC<ProposalCardProps> = ({
+  proposal,
+  currentPlayerId,
+  players,
+  onAccept,
+  onReject,
+  onCancel,
+}) => {
   const fromPlayer = players.find(p => p.id === proposal.fromPlayerId);
   const toPlayer = players.find(p => p.id === proposal.toPlayerId);
   const isReceiver = proposal.toPlayerId === currentPlayerId;
@@ -131,14 +141,14 @@ const ProposalCard: React.FC<ProposalCardProps> = ({ proposal, currentPlayerId, 
           {isReceiver && (
             <>
               <button
-                onClick={() => dispatch(acceptTrade({ tradeId: proposal.id, acceptingPlayerId: currentPlayerId }))}
+                onClick={() => onAccept(proposal.id)}
                 className="flex-1 flex items-center justify-center space-x-1 bg-green-600 hover:bg-green-500 text-white rounded px-3 py-1.5 text-xs font-semibold transition-colors"
               >
                 <Check className="w-3 h-3" />
                 <span>Accept</span>
               </button>
               <button
-                onClick={() => dispatch(rejectTrade({ tradeId: proposal.id, rejectingPlayerId: currentPlayerId }))}
+                onClick={() => onReject(proposal.id)}
                 className="flex-1 flex items-center justify-center space-x-1 bg-red-700 hover:bg-red-600 text-white rounded px-3 py-1.5 text-xs font-semibold transition-colors"
               >
                 <Ban className="w-3 h-3" />
@@ -148,7 +158,7 @@ const ProposalCard: React.FC<ProposalCardProps> = ({ proposal, currentPlayerId, 
           )}
           {isSender && (
             <button
-              onClick={() => dispatch(cancelTrade({ tradeId: proposal.id, cancellingPlayerId: currentPlayerId }))}
+              onClick={() => onCancel(proposal.id)}
               className="flex-1 flex items-center justify-center space-x-1 bg-slate-600 hover:bg-slate-500 text-white rounded px-3 py-1.5 text-xs font-semibold transition-colors"
             >
               <X className="w-3 h-3" />
@@ -163,6 +173,13 @@ const ProposalCard: React.FC<ProposalCardProps> = ({ proposal, currentPlayerId, 
 
 export const BarteringPanel: React.FC = () => {
   const dispatch = useDispatch();
+  const {
+    isMultiplayer,
+    sendProposeTrade,
+    sendAcceptTrade,
+    sendRejectTrade,
+    sendCancelTrade,
+  } = useMultiplayer();
   const { players, currentPlayer, playerStats, tradeProposals, currentPhase } = useSelector(
     (state: RootState) => state.game
   );
@@ -205,16 +222,42 @@ export const BarteringPanel: React.FC = () => {
     const hasRequest = Object.values(requestedResources).some(v => v > 0);
     if (!hasOffer && !hasRequest) return;
 
-    dispatch(proposeTrade({
+    const payload = {
       fromPlayerId: currentPlayer.id,
       toPlayerId: targetPlayerId,
       offeredResources,
       requestedResources,
-    }));
+    };
+    if (isMultiplayer) {
+      sendProposeTrade(payload);
+    } else {
+      dispatch(proposeTrade(payload));
+    }
     setOfferedResources({});
     setRequestedResources({});
     setTargetPlayerId('');
     setShowNewTrade(false);
+  };
+
+  const handleAcceptTrade = (tradeId: string) => {
+    if (!currentPlayer) return;
+    const payload = { tradeId, acceptingPlayerId: currentPlayer.id };
+    if (isMultiplayer) sendAcceptTrade(payload);
+    else dispatch(acceptTrade(payload));
+  };
+
+  const handleRejectTrade = (tradeId: string) => {
+    if (!currentPlayer) return;
+    const payload = { tradeId, rejectingPlayerId: currentPlayer.id };
+    if (isMultiplayer) sendRejectTrade(payload);
+    else dispatch(rejectTrade(payload));
+  };
+
+  const handleCancelTrade = (tradeId: string) => {
+    if (!currentPlayer) return;
+    const payload = { tradeId, cancellingPlayerId: currentPlayer.id };
+    if (isMultiplayer) sendCancelTrade(payload);
+    else dispatch(cancelTrade(payload));
   };
 
   const isValidProposal = () => {
@@ -263,6 +306,9 @@ export const BarteringPanel: React.FC = () => {
                   proposal={proposal}
                   currentPlayerId={currentPlayer?.id ?? ''}
                   players={players}
+                  onAccept={handleAcceptTrade}
+                  onReject={handleRejectTrade}
+                  onCancel={handleCancelTrade}
                 />
               ))
             ) : (

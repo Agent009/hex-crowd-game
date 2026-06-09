@@ -69,7 +69,13 @@ export const GameLobby: React.FC = () => {
   const [showLocalJoinForm, setShowLocalJoinForm] = useState(false);
   const [localPlayerName, setLocalPlayerName] = useState('');
   const [reconnectCode, setReconnectCode] = useState('');
-  const [sessionInfo, setSessionInfo] = useState<{ gameMode: string; playerCount: number; hasState: boolean } | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<{
+    gameMode: string;
+    playerCount: number;
+    hasState: boolean;
+    stateStatus: 'none' | 'valid' | 'invalid';
+    stateError?: string;
+  } | null>(null);
   const [checkingSession, setCheckingSession] = useState(false);
 
   const [authEmail, setAuthEmail] = useState('');
@@ -214,6 +220,9 @@ export const GameLobby: React.FC = () => {
   };
 
   const localPlayer = players.find(p => p.id === localPlayerId) || players.find(p => p.name === session.localPlayerName);
+  const canReconnectToSession = Boolean(sessionInfo)
+    && sessionInfo?.gameMode !== 'ended'
+    && (sessionInfo?.gameMode !== 'playing' || sessionInfo.stateStatus === 'valid');
 
   if (gameMode !== 'lobby') return null;
 
@@ -267,6 +276,7 @@ export const GameLobby: React.FC = () => {
           <div className="space-y-4">
             <button
               onClick={() => setLobbyView('creating')}
+              data-testid="create-online-game-button"
               className="w-full flex items-center justify-center space-x-3 bg-green-600 hover:bg-green-500 text-white rounded-xl px-6 py-4 font-semibold text-lg transition-colors"
             >
               <Globe className="w-6 h-6" />
@@ -275,6 +285,7 @@ export const GameLobby: React.FC = () => {
 
             <button
               onClick={() => setLobbyView('joining')}
+              data-testid="join-online-game-button"
               className="w-full flex items-center justify-center space-x-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-6 py-4 font-semibold text-lg transition-colors"
             >
               <LogIn className="w-6 h-6" />
@@ -283,6 +294,7 @@ export const GameLobby: React.FC = () => {
 
             <button
               onClick={() => setLobbyView('reconnecting')}
+              data-testid="reconnect-online-game-button"
               className="w-full flex items-center justify-center space-x-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-6 py-4 font-semibold text-lg transition-colors"
             >
               <RefreshCw className="w-6 h-6" />
@@ -297,6 +309,7 @@ export const GameLobby: React.FC = () => {
 
             <button
               onClick={() => setLobbyView('session')}
+              data-testid="local-game-button"
               className="w-full flex items-center justify-center space-x-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl px-6 py-4 font-semibold text-lg transition-colors"
             >
               <Users className="w-6 h-6" />
@@ -330,6 +343,7 @@ export const GameLobby: React.FC = () => {
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Enter your name"
+                data-testid="create-player-name-input"
                 className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none text-lg"
                 maxLength={20}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateSession()}
@@ -345,6 +359,7 @@ export const GameLobby: React.FC = () => {
             <button
               onClick={handleCreateSession}
               disabled={!playerName.trim() || isLoading}
+              data-testid="create-session-button"
               className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
             >
               {isLoading ? (
@@ -381,6 +396,7 @@ export const GameLobby: React.FC = () => {
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Enter your name"
+                data-testid="join-player-name-input"
                 className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-lg"
                 maxLength={20}
               />
@@ -393,6 +409,7 @@ export const GameLobby: React.FC = () => {
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 placeholder="XXXXXX"
+                data-testid="join-session-code-input"
                 className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-lg tracking-[0.3em] text-center font-mono"
                 maxLength={6}
                 onKeyDown={(e) => e.key === 'Enter' && handleJoinSession()}
@@ -408,6 +425,7 @@ export const GameLobby: React.FC = () => {
             <button
               onClick={handleJoinSession}
               disabled={!playerName.trim() || joinCode.length < 6 || isLoading}
+              data-testid="join-session-button"
               className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
             >
               {isLoading ? (
@@ -452,12 +470,14 @@ export const GameLobby: React.FC = () => {
                     setSessionInfo(null);
                   }}
                   placeholder="XXXXXX"
+                  data-testid="reconnect-session-code-input"
                   className="flex-1 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-amber-500 focus:outline-none text-lg tracking-[0.3em] text-center font-mono"
                   maxLength={6}
                 />
                 <button
                   onClick={handleCheckSession}
                   disabled={reconnectCode.length < 6 || checkingSession}
+                  data-testid="check-session-button"
                   className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   {checkingSession ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Check'}
@@ -467,8 +487,10 @@ export const GameLobby: React.FC = () => {
 
             {sessionInfo && (
               <div className={`rounded-lg p-4 border ${
-                sessionInfo.gameMode === 'playing' && sessionInfo.hasState
+                sessionInfo.gameMode === 'playing' && sessionInfo.stateStatus === 'valid'
                   ? 'bg-green-900/30 border-green-700'
+                  : sessionInfo.stateStatus === 'invalid'
+                    ? 'bg-red-900/30 border-red-700'
                   : 'bg-slate-800 border-slate-600'
               }`}>
                 <div className="flex items-center justify-between mb-2">
@@ -490,10 +512,15 @@ export const GameLobby: React.FC = () => {
                     No saved state available - game may have just started
                   </p>
                 )}
+                {sessionInfo.gameMode === 'playing' && sessionInfo.stateStatus === 'invalid' && (
+                  <p className="text-red-300 text-xs mt-2">
+                    Saved state is invalid. Reconnect is disabled until the host saves a clean state.
+                  </p>
+                )}
               </div>
             )}
 
-            {sessionInfo && sessionInfo.gameMode !== 'ended' && (
+            {sessionInfo && canReconnectToSession && (
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">Your Name (as registered in game)</label>
                 <input
@@ -501,6 +528,7 @@ export const GameLobby: React.FC = () => {
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
                   placeholder="Enter your name"
+                  data-testid="reconnect-player-name-input"
                   className="w-full bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-amber-500 focus:outline-none text-lg"
                   maxLength={20}
                 />
@@ -513,10 +541,11 @@ export const GameLobby: React.FC = () => {
               </div>
             )}
 
-            {sessionInfo && sessionInfo.gameMode !== 'ended' && (
+            {sessionInfo && canReconnectToSession && (
               <button
                 onClick={handleReconnect}
                 disabled={!playerName.trim() || isLoading}
+                data-testid="reconnect-session-button"
                 className="w-full flex items-center justify-center space-x-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-semibold transition-colors"
               >
                 {isLoading ? (
@@ -742,7 +771,7 @@ export const GameLobby: React.FC = () => {
                   ) : (
                     <WifiOff className="w-5 h-5 text-red-400" />
                   )}
-                  <span className="text-slate-300 text-sm capitalize">{session.connectionStatus}</span>
+                  <span data-testid="connection-status-value" className="text-slate-300 text-sm capitalize">{session.connectionStatus}</span>
                 </div>
                 {isHost && (
                   <span className="bg-amber-700 text-amber-100 text-xs font-semibold px-2 py-1 rounded">HOST</span>
@@ -751,7 +780,7 @@ export const GameLobby: React.FC = () => {
 
               <div className="flex items-center space-x-3">
                 <span className="text-slate-400 text-sm">Session Code:</span>
-                <span className="font-mono text-2xl font-bold text-white tracking-[0.2em] bg-slate-700 px-4 py-1 rounded-lg">
+                <span data-testid="session-code-value" className="font-mono text-2xl font-bold text-white tracking-[0.2em] bg-slate-700 px-4 py-1 rounded-lg">
                   {session.sessionCode}
                 </span>
                 <button
@@ -769,6 +798,7 @@ export const GameLobby: React.FC = () => {
 
               <button
                 onClick={handleDisconnect}
+                data-testid="leave-online-session-button"
                 className="text-red-400 hover:text-red-300 text-sm flex items-center space-x-1 transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -811,6 +841,7 @@ export const GameLobby: React.FC = () => {
               {!showLocalJoinForm ? (
                 <button
                   onClick={() => setShowLocalJoinForm(true)}
+                  data-testid="add-local-player-button"
                   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center"
                   disabled={players.length >= 30}
                 >
@@ -824,12 +855,14 @@ export const GameLobby: React.FC = () => {
                     value={localPlayerName}
                     onChange={(e) => setLocalPlayerName(e.target.value)}
                     placeholder="Enter player name"
+                    data-testid="local-player-name-input"
                     className="flex-1 bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
                     maxLength={20}
                     onKeyDown={(e) => e.key === 'Enter' && handleLocalJoinGame()}
                   />
                   <button
                     onClick={handleLocalJoinGame}
+                    data-testid="confirm-local-player-button"
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
                     disabled={!localPlayerName.trim()}
                   >
@@ -904,6 +937,7 @@ export const GameLobby: React.FC = () => {
                             {isLocalPlayer && (
                               <button
                                 onClick={() => handleToggleReady(player.id)}
+                                data-testid={player.id === localPlayer?.id && isMultiplayer ? 'local-ready-button' : 'ready-button'}
                                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                                   player.isReady
                                     ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -967,6 +1001,7 @@ export const GameLobby: React.FC = () => {
                 <button
                   onClick={handleStartGame}
                   disabled={!canStartGame}
+                  data-testid="start-game-button"
                   className={`px-8 py-3 rounded-lg font-bold text-lg transition-colors flex items-center mx-auto ${
                     canStartGame
                       ? 'bg-green-600 hover:bg-green-700 text-white'

@@ -1,6 +1,5 @@
 import { Coins } from "lucide-react";
-import {ResourceAmount, resourceData} from "../data/gameData";
-import { BuildingData } from "../data/buildingsData";
+import {resourceData} from "../data/gameData";
 import {ItemData} from "../data/harvestData";
 
 export function getResourceIcon(resourceType: string) {
@@ -9,14 +8,6 @@ export function getResourceIcon(resourceType: string) {
 
 export function getResourceColor(resourceType: string) {
   return resourceData[resourceType as keyof typeof resourceData]?.color || '#FFD700';
-}
-
-// Helper function to calculate building cost at a specific level
-export function calculateBuildingCost(building: BuildingData, level: number): ResourceAmount {
-  const levelData = building.levels.find(l => l.level === level);
-  if (!levelData) return {};
-
-  return levelData.resourcesCost;
 }
 
 // Helper function to format time (seconds to readable format)

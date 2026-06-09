@@ -11,103 +11,55 @@
 * Activity Logging: Real-time event tracking
 * UI Components: Game lobby, HUD, harvest grid, tile info
 * Disaster System: Natural disasters affecting terrain types
+* Trading & Bartering: Player-to-player proposals, acceptance/rejection, validation, and history
+* Hero, Army & Combat System: Hero recruitment, rest, skills, spells, unit recruitment, adjacent combat, XP, and combat reports
+* Victory Conditions: Solo/team winner detection, victory overlay, reset/play-again flow, and final stats
+* Multiplayer Infrastructure: Supabase Realtime host-authoritative sessions, host action/state-sync validation, ordered/deduplicated host snapshots, auth, reconnect, disconnect grace-window handling, host migration, optional session authority gateway, persistence, and action audit logging
+* Production Hardening: Missing-env fallbacks, canvas error recovery, focused Vitest coverage, Playwright local-game smoke/profile coverage, gated live Supabase E2E and long-soak harnesses, chunk splitting, and material-rich Phaser hex rendering
 
-### 🚨 Critical Missing Features
+### Production Readiness Runbook
 
-#### 1. Multiplayer Infrastructure
+See `ProductionReadiness.md` for release gates, the default GitHub Actions CI workflow, live Supabase E2E setup, Supabase/RLS checklist, environment configuration, diagnostics export options, and dependency maintenance policy.
 
-* Status: Not implemented
+### 🚨 Remaining Production Hardening
+
+#### 1. Multiplayer Validation & Load Coverage
+
+* Status: Needs deeper production validation
 ##### Requirements:
 
-* Real-time WebSocket connections for 30 concurrent players
-* Server-side game state synchronization
-* Player authentication and session management
-* Reconnection handling for dropped connections
-* Anti-cheat validation on server
-* Technical Implementation:
+* Run the gated live online E2E harness for create/join/reconnect against a Supabase test project
+* Promote the live persisted-state restoration check into CI once Supabase test credentials and RLS policy are agreed
+* Run the opt-in long-soak profile in CI or a configured local profile window and tune release thresholds/cadence
+* Deploy and validate the optional session authority gateway, then decide whether gameplay actions also need a fully server-authoritative simulation layer
 
-```
-// Required backend services
-interface MultiplayerService {
-  gameRooms: Map<string, GameRoom>;
-  playerSessions: Map<string, PlayerSession>;
-  broadcastGameState(roomId: string, state: GameState): void;
-  validatePlayerAction(playerId: string, action: GameAction): boolean;
-}
-```
+#### 2. Operational Readiness
 
-#### 2. Combat System
-
-* Status: Missing entirely
+* Status: Checklist documented; deployment policy decisions remain
 ##### Requirements:
 
-* Player vs Player combat mechanics
-* Combat resolution algorithms
-* Damage calculation and HP management
-* Combat animations and feedback
-* Victory/defeat conditions
-* Data Model Additions:
-
-```
-interface CombatAction {
-  attackerId: string;
-  defenderId: string;
-  attackType: 'melee' | 'ranged' | 'magic';
-  damage: number;
-  location: CubeCoords;
-}
-
-interface PlayerCombatStats {
-  attack: number;
-  defense: number;
-  criticalChance: number;
-  combatModifiers: CombatModifier[];
-}
-```
-
-#### 3. Victory Conditions & Scoring
-
-* Status: Partially implemented (basic team scores)
-* 
-##### Missing:
-
-* Multiple victory condition types
-* Point accumulation systems
-* End-game triggers
-* Winner determination logic
-* Victory celebrations and statistics
-
-#### 4. Advanced Item Effects
-
-* Status: Basic item usage implemented
-
-##### Missing:
-
-* Terraform: Make 3 tiles active
-* Leech: Make 2 tiles inactive
-* Armageddon: Deal 2 damage to all players
-* Rejuvenate: Heal +3 HP
-* Complex item interactions
-
-#### 5. Trading & Bartering System
-
-* Status: Phase exists but no implementation
-
-##### Requirements:
-
-* Player-to-player resource trading
-* Trade proposal and acceptance system
-* Trade history and validation
-* Market pricing mechanisms
+* Apply the dependency maintenance policy in `ProductionReadiness.md`
+* Decide whether the included realtime diagnostics Edge Function is the final sink or a forwarding layer
+* Finalise Supabase Auth, Realtime, RLS, and retention settings for the chosen deployment model
 
 ### 🔧 Technical Improvements Needed
 #### 1. State Management Architecture
 
-##### Current Issues:
+##### Current Status:
 
-* All game state in single Redux slice
-* No separation of client/server state
-* Missing optimistic updates
+* Game state is split across domain slices (`game`, `world`, `ui`, `session`, and `auth`)
+* Online sessions use host-authoritative shared state over Supabase Realtime
+* Host-side action validation blocks malformed/unauthorised realtime actions before dispatch, state sync, or audit logging
+* Client-side state-sync validation rejects malformed or stale host snapshots before replacing local game/world state
+* Active-session checks report saved-state validity, and in-progress joins/reconnects validate persisted Supabase state before restoring local Redux state
+* State-sync payloads are sequenced, deduplicated, and measured against a configurable throttled warning budget
+* Presence disconnects use a configurable grace window before game removal or host migration, and rejoins cancel pending finalization
+* Production can route session creation, host saves, player-count updates, turn-audit writes, host claims, and session-end writes through the optional `session-authority` Edge Function
+
+##### Remaining:
+
+* Dedicated server/Edge gameplay simulation if production anti-cheat must be independent of client-host authority
+* Optional optimistic UI patterns for latency-sensitive online actions after live Supabase profiling
 
 ##### Recommendations:
 
@@ -122,21 +74,32 @@ interface GameStateArchitecture {
 
 #### 2. Performance Optimization
 
-##### Missing:
+##### Current Status:
 
-* Tile virtualization for large hex grids
-* Efficient rendering for 30+ players
-* Memory management for long games
-* Network optimization for real-time updates
+* Dirty-tile Phaser redraws avoid full world rerenders on ordinary updates
+* `GameCanvas` lazy-loads the Phaser chunk after leaving the lobby
+* Local Playwright coverage includes 30-player startup and sustained frame sampling
+
+##### Remaining:
+
+* Run the opt-in long-soak profile in CI or a dedicated profiling environment
+* Tune state-sync payload warning thresholds and network payload strategy after live Supabase E2E/profile results
+* Revisit tile virtualization only if future maps grow beyond the current 91-tile board
 
 #### 3. Error Handling & Resilience
 
-##### Missing:
+##### Current Status:
 
-* Network disconnection recovery
-* Game state corruption handling
-* Player timeout management
-* Graceful degradation for slow connections
+* Missing Supabase env falls back cleanly for local play
+* Reconnect and host-migration flows are implemented with local contract coverage
+* Realtime diagnostics are stored in memory, emitted as browser events, and can be sent to the included Supabase Edge Function sink
+* Malformed realtime actions and malformed host state-sync snapshots are rejected before local state mutation
+* Transient presence drops are debounced before game-affecting disconnect handling
+* Canvas chunk/runtime failures show a retryable fallback instead of a blank play surface
+
+##### Remaining:
+
+* Live Supabase validation and tuning for disconnect/reconnect timing under real network conditions
 
 ### 📊 Data Model Enhancements
 

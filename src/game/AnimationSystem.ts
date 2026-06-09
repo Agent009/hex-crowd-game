@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import { CubeCoords, cubeToPixel, getHexPoints } from "../utils/hexGrid";
 import { GameConfig, PerformanceSettings } from "./GameConfig";
 import { resourceData, ResourceType } from "../data/gameData";
-import { BuildingType } from "../data/buildingsData";
 import { TextureFactory, TextureKeys } from "./TextureFactory";
 import { ParticleEmitterManager } from "./ParticleEmitterManager";
 
@@ -20,10 +19,10 @@ export interface ResourceDiscoveryConfig extends AnimationConfig {
   amount: number;
 }
 
-export interface ConstructionCompletionConfig extends AnimationConfig {
+export interface CelebrationConfig extends AnimationConfig {
   coords: CubeCoords;
-  buildingType: BuildingType;
-  level: number;
+  text: string;
+  color?: string;
 }
 
 export interface FogRevealConfig extends AnimationConfig {
@@ -264,30 +263,30 @@ export class GameAnimationSystem implements PerformanceSettings {
     });
   }
 
-  // 2. Construction/Upgrade Completion Animation
-  public createConstructionCompletionAnimation(
-    config: ConstructionCompletionConfig
-  ): Promise<void> {
+  // 2. Celebration Animation (level-ups, combat victories, recruitment)
+  public createCelebrationAnimation(config: CelebrationConfig): Promise<void> {
     return new Promise((resolve) => {
       const pixel = cubeToPixel(config.coords, this.hexSize);
 
-      // Phase 1: Building outline pulse (300ms)
-      this.createBuildingPulse(pixel, 300).then(() => {
+      // Phase 1: Hex outline pulse (300ms)
+      this.createHexPulse(pixel, 300).then(() => {
         // Phase 2: Rising sparkle particles
         this.createRisingSparkles(pixel, 800).then(() => {
-          // Phase 3: Structure scale bounce (400ms)
-          this.createScaleBounce(pixel, 400).then(() => {
-            // Display floating level text
-            this.createFloatingLevelText(pixel, config.level, 600).then(() => {
-              resolve();
-            });
+          // Phase 3: Floating announcement text
+          this.createFloatingText(
+            pixel,
+            config.text,
+            600,
+            config.color ?? "#00ff00"
+          ).then(() => {
+            resolve();
           });
         });
       });
     });
   }
 
-  private createBuildingPulse(
+  private createHexPulse(
     position: { x: number; y: number },
     duration: number
   ): Promise<void> {
@@ -368,72 +367,35 @@ export class GameAnimationSystem implements PerformanceSettings {
     });
   }
 
-  private createScaleBounce(
+  private createFloatingText(
     position: { x: number; y: number },
-    duration: number
+    message: string,
+    duration: number,
+    color: string
   ): Promise<void> {
     return new Promise((resolve) => {
-      // Find the building sprite at this position (simplified)
-      const buildingSprite = this.scene.children.list.find(
-        (child): child is Phaser.GameObjects.Text =>
-          child instanceof Phaser.GameObjects.Text &&
-          "x" in child &&
-          "y" in child &&
-          (child as Phaser.GameObjects.Text & { x: number; y: number }).x ===
-            position.x &&
-          (child as Phaser.GameObjects.Text & { x: number; y: number }).y ===
-            position.y
-      );
-
-      if (buildingSprite) {
-        const bounceTween = this.scene.tweens.add({
-          targets: buildingSprite,
-          scaleX: { from: 1, to: 1.1 },
-          scaleY: { from: 1, to: 1.1 },
-          duration: duration * 0.6,
-          ease: "Back.easeOut",
-          yoyo: true,
-          onComplete: () => {
-            this.activeAnimations.delete(bounceTween);
-            resolve();
-          },
-        });
-
-        this.activeAnimations.add(bounceTween);
-      } else {
-        resolve();
-      }
-    });
-  }
-
-  private createFloatingLevelText(
-    position: { x: number; y: number },
-    level: number,
-    duration: number
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      const levelText = this.createText();
-      levelText.setText(`+Level ${level}`);
-      levelText.setStyle({
+      const floatText = this.createText();
+      floatText.setText(message);
+      floatText.setStyle({
         fontSize: "16px",
-        color: "#00ff00",
+        color,
         fontStyle: "bold",
         stroke: "#000000",
         strokeThickness: 2,
       });
-      levelText.setPosition(position.x, position.y - 20);
-      levelText.setOrigin(0.5);
-      levelText.setDepth(GameConfig.rendering.animationDepth + 10);
+      floatText.setPosition(position.x, position.y - 20);
+      floatText.setOrigin(0.5);
+      floatText.setDepth(GameConfig.rendering.animationDepth + 10);
 
       const textTween = this.scene.tweens.add({
-        targets: levelText,
+        targets: floatText,
         y: position.y - 50,
         alpha: { from: 1, to: 0 },
         scale: { from: 1.2, to: 0.8 },
         duration: duration,
         ease: "Power2",
         onComplete: () => {
-          this.destroyText(levelText);
+          this.destroyText(floatText);
           this.activeAnimations.delete(textTween);
           resolve();
         },

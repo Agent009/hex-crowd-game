@@ -17,6 +17,8 @@ import { HarvestGrid } from './HarvestGrid';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
 import { NotificationSystem } from './NotificationSystem';
 import { HexActionMenu } from './HexActionMenu';
+import { HeroCommandPanel } from './HeroCommandPanel';
+import { CombatResultModal } from './CombatResultModal';
 import {
   Users,
   Trophy,
@@ -34,6 +36,7 @@ import {
   X,
   ArrowLeftRight,
   Wifi,
+  Swords,
 } from 'lucide-react';
 
 export const PartyGameHUD: React.FC = () => {
@@ -54,6 +57,7 @@ export const PartyGameHUD: React.FC = () => {
 
   const [isGamePaused, setIsGamePaused] = useState(false);
   const [showHarvestGrid, setShowHarvestGrid] = useState(false);
+  const [showHeroCommand, setShowHeroCommand] = useState(false);
   const [showTestControls, setShowTestControls] = useState(false);
   const [showTeamScores, setShowTeamScores] = useState(false);
   const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting' | 'trade'>('resources');
@@ -272,6 +276,19 @@ export const PartyGameHUD: React.FC = () => {
             <ArrowLeftRight className="w-5 h-5" />
           </button>
 
+          <button
+            onClick={() => setShowHeroCommand(!showHeroCommand)}
+            data-testid="hero-command-button"
+            className={`p-2 rounded-lg transition-colors ${
+              showHeroCommand
+                ? 'bg-amber-600 text-white'
+                : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+            }`}
+            title="Hero Command"
+          >
+            <Swords className="w-5 h-5" />
+          </button>
+
           {isTestMode && (
             <>
               <button
@@ -385,6 +402,12 @@ export const PartyGameHUD: React.FC = () => {
       <HexActionMenu
         onOpenHarvestGrid={handleOpenHarvestGrid}
       />
+
+      {showHeroCommand && (
+        <HeroCommandPanel onClose={() => setShowHeroCommand(false)} />
+      )}
+
+      <CombatResultModal />
 
       {/* Status Effects Display */}
       <StatusEffectsDisplay />

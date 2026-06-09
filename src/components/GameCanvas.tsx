@@ -20,7 +20,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
 
   const { tiles } = useSelector((state: RootState) => state.world);
   const { showPlayerNumbers } = useSelector((state: RootState) => state.ui);
-  const { activityEvents } = useSelector((state: RootState) => state.game);
+  const { activityEvents, heroes } = useSelector((state: RootState) => state.game);
   const lastDisasterEventIdRef = useRef<string | null>(null);
 
   // Memoized event handlers to prevent recreation on every render
@@ -72,6 +72,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
           if (sceneRef.current) {
             sceneRef.current.initializeScene({
               tiles,
+              heroes,
               onTileClick: handleTileClick,
               onTileHover: handleTileHover,
               showPlayerNumbers
@@ -141,6 +142,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
     }
   }, [tiles]);
 
+  useEffect(() => {
+    if (sceneRef.current && sceneRef.current.scene.isActive()) {
+      sceneRef.current.updateHeroes(heroes);
+    }
+  }, [heroes]);
+
   // Update player numbers visibility when setting changes
   useEffect(() => {
     if (sceneRef.current && sceneRef.current.scene.isActive()) {
@@ -205,7 +212,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   return (
     <div 
       id="game-container" 
-      className={`relative w-full h-full bg-green-900 ${className}`}
+      data-testid="game-canvas"
+      className={`relative w-full h-full bg-slate-950 ${className}`}
       style={{ minHeight: `${GameConfig.canvas.minHeight}px` }}
     />
   );

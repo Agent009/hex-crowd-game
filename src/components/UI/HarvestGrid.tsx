@@ -25,6 +25,7 @@ import {
 import {isCraftable} from "../../utils/utils";
 import { X, ArrowLeftRight } from 'lucide-react';
 import { BarteringPanel } from './BarteringPanel';
+import { useMultiplayer } from '../../hooks/useMultiplayer';
 
 type TabType = 'resources' | 'items' | 'crafting' | 'trade';
 
@@ -38,6 +39,12 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
   onClose
 }) => {
   const dispatch = useDispatch();
+  const {
+    isMultiplayer,
+    sendHarvest,
+    sendCraft,
+    sendUseItem,
+  } = useMultiplayer();
   const { currentPlayer, currentPhase, playerStats, globalItemQuantities } = useSelector((state: RootState) => state.game);
   const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
 
@@ -98,14 +105,19 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
     const resource = harvestGrid.harvestResource(terrainType, slotIndex);
     if (resource) {
-      dispatch(harvestFromTile({
+      const payload = {
         playerId: currentPlayer.id,
         tileCoords: selectedTile,
         resourceId: resource.id,
         isItem: false,
         tiles,
         activeTiles
-      }));
+      };
+      if (isMultiplayer) {
+        sendHarvest(payload);
+      } else {
+        dispatch(harvestFromTile(payload));
+      }
 
       setGridKey(prev => prev + 1);
     }
@@ -141,14 +153,19 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
         return;
       }
 
-      dispatch(harvestFromTile({
+      const payload = {
         playerId: currentPlayer.id,
         tileCoords: selectedTile,
         itemId: item.id,
         isItem: true,
         tiles,
         activeTiles
-      }));
+      };
+      if (isMultiplayer) {
+        sendHarvest(payload);
+      } else {
+        dispatch(harvestFromTile(payload));
+      }
 
       setGridKey(prev => prev + 1);
     } else {
@@ -174,10 +191,14 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
       return;
     }
 
-    dispatch(craftItem({
-      playerId: currentPlayer.id,
-      itemId
-    }));
+    if (isMultiplayer) {
+      sendCraft(currentPlayer.id, itemId);
+    } else {
+      dispatch(craftItem({
+        playerId: currentPlayer.id,
+        itemId
+      }));
+    }
 
     if (itemTemplate) {
       showFlash(`Successfully crafted ${itemTemplate.name}!`, 'success');
@@ -197,13 +218,25 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     }
 
     if (itemId === 'terraform') {
-      dispatch(applyTerraformItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
+      if (isMultiplayer) {
+        sendUseItem(currentPlayer.id, itemId);
+      } else {
+        dispatch(applyTerraformItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
+      }
       showFlash('Terraform used! 3 inactive tiles are now active.', 'success');
     } else if (itemId === 'leech') {
-      dispatch(applyLeechItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
+      if (isMultiplayer) {
+        sendUseItem(currentPlayer.id, itemId);
+      } else {
+        dispatch(applyLeechItem(currentPlayer.id) as unknown as Parameters<typeof dispatch>[0]);
+      }
       showFlash('Leech used! 2 active tiles are now inactive.', 'success');
     } else {
-      dispatch(activateItemEffect({ playerId: currentPlayer.id, itemId }));
+      if (isMultiplayer) {
+        sendUseItem(currentPlayer.id, itemId);
+      } else {
+        dispatch(activateItemEffect({ playerId: currentPlayer.id, itemId }));
+      }
       if (itemId === 'rejuvenate') showFlash('Rejuvenate used! +3 HP.', 'success');
       if (itemId === 'armageddon') showFlash('Armageddon unleashed! All other players take 2 damage.', 'success');
     }
