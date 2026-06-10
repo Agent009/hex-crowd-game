@@ -29,6 +29,9 @@ export class GameScene extends Phaser.Scene {
   private heroMarkerBadges: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private heroMarkers: Map<string, Phaser.GameObjects.Text> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private backdropGraphics?: Phaser.GameObjects.Graphics;
+  private ambientGlow?: Phaser.GameObjects.Graphics;
+  private ambientTween?: Phaser.Tweens.Tween;
   private sharedEmitterManager!: ParticleEmitterManager;
   private particleSystem!: AtmosphericParticleSystem;
   private animationSystem!: GameAnimationSystem;
@@ -63,6 +66,9 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.setRotation(0);
       this.cameras.main.setBackgroundColor(GameConfig.camera.backgroundColor);
     }
+
+    // Ambient backdrop framing the board with depth.
+    this.createAmbientBackdrop();
 
     // Enable input
     this.input.on("pointermove", this.handlePointerMove, this);
@@ -697,6 +703,57 @@ export class GameScene extends Phaser.Scene {
     return (seed % 1000) / 1000;
   }
 
+  /**
+   * Build a static ambient backdrop centred on the board: a deep radial
+   * vignette plus a soft breathing glow that gives the play surface depth.
+   * Anchored in world space below every tile, so it pans/zooms with the board.
+   */
+  private createAmbientBackdrop() {
+    // Board spans ~5 rings; cover generously so edges never show through.
+    const reach = this.hexSize * 22;
+
+    const backdrop = this.add.graphics();
+    backdrop.setDepth(GameConfig.rendering.tileDepthOffset - 200);
+    // Concentric rings fading from a lit centre to near-black at the edges.
+    const steps = 26;
+    for (let i = steps; i >= 0; i--) {
+      const t = i / steps;
+      const radius = reach * t;
+      const color = this.mixColor(0x0b3a24, 0x020409, t);
+      backdrop.fillStyle(color, 1);
+      backdrop.fillCircle(0, 0, radius);
+    }
+    this.backdropGraphics = backdrop;
+
+    // Decorative concentric guide rings echoing the hex board outline.
+    backdrop.lineStyle(2, 0x14532d, 0.35);
+    backdrop.strokeCircle(0, 0, this.hexSize * 9.5);
+    backdrop.lineStyle(1.5, 0x166534, 0.25);
+    backdrop.strokeCircle(0, 0, this.hexSize * 11);
+
+    // A soft glow that gently pulses to keep the board feeling alive.
+    const glow = this.add.graphics();
+    glow.setDepth(GameConfig.rendering.tileDepthOffset - 150);
+    const glowSteps = 14;
+    for (let i = glowSteps; i >= 0; i--) {
+      const t = i / glowSteps;
+      glow.fillStyle(0x2dd4bf, 0.05 * (1 - t));
+      glow.fillCircle(0, 0, this.hexSize * 8 * (1 - t) + this.hexSize);
+    }
+    glow.setAlpha(0.5);
+    this.ambientGlow = glow;
+
+    this.ambientTween = this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.32, to: 0.7 },
+      scale: { from: 0.96, to: 1.06 },
+      duration: 4200,
+      ease: "Sine.easeInOut",
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
   private mixColor(baseColor: number, targetColor: number, amount: number): number {
     return Phaser.Display.Color.Interpolate.ColorWithColor(
       Phaser.Display.Color.IntegerToColor(baseColor),
@@ -1059,6 +1116,19 @@ export class GameScene extends Phaser.Scene {
     this.clearTiles();
     if (this.gridGraphics) {
       this.gridGraphics.destroy();
+    }
+
+    if (this.ambientTween) {
+      this.ambientTween.stop();
+      this.ambientTween = undefined;
+    }
+    if (this.ambientGlow) {
+      this.ambientGlow.destroy();
+      this.ambientGlow = undefined;
+    }
+    if (this.backdropGraphics) {
+      this.backdropGraphics.destroy();
+      this.backdropGraphics = undefined;
     }
 
     this.input.off("pointermove", this.handlePointerMove, this);

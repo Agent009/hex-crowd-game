@@ -1647,6 +1647,9 @@ const gameSlice = createSlice({
         ...initialState,
         teams: generateTeams(),
         globalItemQuantities: buildInitialItemQuantities(),
+        heroes: [],
+        selectedHeroId: null,
+        lastCombatResult: null,
       };
     },
   },

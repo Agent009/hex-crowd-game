@@ -8,6 +8,7 @@ import { PartyGameHUD } from './UI/PartyGameHUD';
 import { TileInfo } from './UI/TileInfo';
 import { BoltLogo } from './UI/BoltLogo';
 import { VictoryScreen } from './UI/VictoryScreen';
+import { ErrorBoundary } from './ErrorBoundary';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 const GameCanvas = React.lazy(() =>
@@ -118,8 +119,10 @@ const GameContent: React.FC = () => {
 
 export const Game: React.FC = () => {
   return (
-    <Provider store={store}>
-      <GameContent />
-    </Provider>
+    <ErrorBoundary label="Game">
+      <Provider store={store}>
+        <GameContent />
+      </Provider>
+    </ErrorBoundary>
   );
 };

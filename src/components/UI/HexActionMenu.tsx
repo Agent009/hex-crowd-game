@@ -1,18 +1,20 @@
 import React from 'react';
 import {useSelector, useDispatch} from 'react-redux';
 import {RootState} from '../../store/store';
-import { movePlayer } from '../../store/gameSlice';
+import { movePlayer, initiateCombat } from '../../store/gameSlice';
 import { deselectTile } from '../../store/worldSlice';
 import { toggleTileInfo } from '../../store/uiSlice';
 import {cubeToPixel, DEFAULT_HEX_SIZE, coordsToKey, areAdjacent} from '../../utils/hexGrid';
 import {terrainData} from '../../data/gameData';
 import { useMultiplayer } from '../../hooks/useMultiplayer';
+import { COMBAT_AP_COST } from '../../game/combat';
 import {
   Package,
   Hammer,
   Info,
   Move,
-  Sparkles
+  Sparkles,
+  Swords
 } from 'lucide-react';
 import {GameScene} from "../../game/GameEngine";
 import {getPhaserGame} from "../../game/phaserRef";
@@ -25,7 +27,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
                                                               onOpenHarvestGrid
                                                             }) => {
   const dispatch = useDispatch();
-  const { isMultiplayer, sendMove } = useMultiplayer();
+  const { isMultiplayer, sendMove, sendInitiateCombat } = useMultiplayer();
   const { selectedTile, tiles, activeTiles } = useSelector((state: RootState) => state.world);
   const {
     currentPlayer,
@@ -71,6 +73,34 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
 
   const canCraft = () => {
     return currentPlayer && currentPlayerStats && currentPhase === 'interaction';
+  };
+
+  // An enemy (different team) standing on the selected adjacent tile, if any.
+  const enemyTarget = (() => {
+    if (!currentPlayer || !tile?.players) return null;
+    return tile.players.find(p => p.teamId !== currentPlayer.teamId) ?? null;
+  })();
+
+  const canAttack = () => {
+    if (!currentPlayer || !currentPlayerStats || currentPhase !== 'interaction') return false;
+    if (!enemyTarget) return false;
+    if (!areAdjacent(currentPlayer.position, selectedTile)) return false;
+    return currentPlayerStats.actionPoints >= COMBAT_AP_COST;
+  };
+
+  const handleAttack = () => {
+    if (currentPlayer && enemyTarget && canAttack()) {
+      if (isMultiplayer) {
+        sendInitiateCombat(currentPlayer.id, enemyTarget.id);
+      } else {
+        dispatch(initiateCombat({
+          attackerId: currentPlayer.id,
+          defenderId: enemyTarget.id,
+          tiles
+        }));
+      }
+      dispatch(deselectTile());
+    }
   };
 
   const handleMove = () => {
@@ -140,15 +170,29 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       angle: 90 // Bottom
     },
     {
+      id: 'attack',
+      icon: Swords,
+      label: enemyTarget
+        ? (canAttack()
+            ? `Attack ${enemyTarget.name} (${COMBAT_AP_COST} AP)`
+            : `Attack ${enemyTarget.name} (need ${COMBAT_AP_COST} AP)`)
+        : 'No enemy here',
+      color: 'bg-red-600 hover:bg-red-700',
+      enabled: canAttack(),
+      onClick: handleAction(handleAttack),
+      angle: 150, // Bottom left
+      hidden: !enemyTarget,
+    },
+    {
       id: 'info',
       icon: Info,
       label: 'Tile Info',
       color: 'bg-slate-600 hover:bg-slate-700',
       enabled: true,
       onClick: handleAction(() => dispatch(toggleTileInfo()), true),
-      angle: 150 // Bottom left
+      angle: 210 // Upper left
     }
-  ];
+  ].filter((a) => !('hidden' in a && a.hidden));
 
   // Calculate screen position more reliably
   const getScreenPosition = () => {

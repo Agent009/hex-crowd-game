@@ -99,6 +99,7 @@ interface GameStateArchitecture {
 * Malformed realtime actions and malformed host state-sync snapshots are rejected before local state mutation
 * Transient presence drops are debounced before game-affecting disconnect handling
 * Canvas chunk/runtime failures show a retryable fallback instead of a blank play surface
+* A top-level application error boundary catches render/runtime errors anywhere in the UI tree and presents an accessible recovery screen (Try-again / Reload) instead of a blank page
 
 ##### Remaining:
 
