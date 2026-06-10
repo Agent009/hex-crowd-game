@@ -9,6 +9,7 @@ type DiagnosticCode =
   | 'state_sync_payload_large'
   | 'invalid_state_sync'
   | 'invalid_action'
+  | 'action_rate_limited'
   | 'persistence_save_failed'
   | 'turn_audit_failed'
   | 'player_count_update_failed'
@@ -39,6 +40,7 @@ const allowedCodes = new Set<DiagnosticCode>([
   'state_sync_payload_large',
   'invalid_state_sync',
   'invalid_action',
+  'action_rate_limited',
   'persistence_save_failed',
   'turn_audit_failed',
   'player_count_update_failed',

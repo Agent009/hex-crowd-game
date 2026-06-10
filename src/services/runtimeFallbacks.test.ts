@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { authService } from './AuthService';
 import {
   appendRealtimeDiagnostic,
+  canSendLocalGameAction,
   createRealtimeDiagnostic,
   createRealtimeDiagnosticRequest,
   createSessionAuthorityRequest,
@@ -18,7 +19,7 @@ import {
   shouldWarnStateSyncPayloadSize,
 } from './RealtimeService';
 import { clearAuth } from '../store/authSlice';
-import { clearSession } from '../store/sessionSlice';
+import { clearSession, setLocalPlayer, setSession } from '../store/sessionSlice';
 import { store } from '../store/store';
 
 const itWhenSupabaseMissing = isSupabaseConfigured ? it.skip : it;
@@ -72,7 +73,10 @@ describe('runtime service fallbacks', () => {
       defenderId: 'defender',
     })).toBe('attacker');
 
-    expect(getGameActionAuditPlayerId({ type: 'forceNextPhase' })).toBeNull();
+    expect(getGameActionAuditPlayerId({
+      type: 'forceNextPhase',
+      playerId: 'player_host',
+    })).toBe('player_host');
   });
 
   it('hashes both game and world state for persistence deduplication', () => {
@@ -104,6 +108,30 @@ describe('runtime service fallbacks', () => {
     expect(shouldBroadcastStateSync(nextHash, stateHash)).toBe(true);
   });
 
+  it('checks local action ownership before client broadcast', () => {
+    expect(canSendLocalGameAction({
+      type: 'move',
+      playerId: 'player_a',
+      target: { q: 0, r: 0, s: 0 },
+    }, 'player_a')).toBe(true);
+
+    expect(canSendLocalGameAction({
+      type: 'move',
+      playerId: 'player_b',
+      target: { q: 0, r: 0, s: 0 },
+    }, 'player_a')).toBe(false);
+
+    expect(canSendLocalGameAction({
+      type: 'forceNextPhase',
+      playerId: 'host_a',
+    }, 'host_a')).toBe(true);
+
+    expect(canSendLocalGameAction({
+      type: 'forceNextPhase',
+      playerId: 'host_b',
+    }, 'host_a')).toBe(false);
+  });
+
   it('measures JSON payload bytes and flags state sync payload budget warnings', () => {
     const payload = { message: 'hello', count: 3 };
     const payloadBytes = measureJsonPayloadBytes(payload);
@@ -131,6 +159,39 @@ describe('runtime service fallbacks', () => {
       actionType: 'move',
       playerId: 'player_a',
       sessionId: null,
+    });
+  });
+
+  it('refuses to send a local action for another player before broadcasting', () => {
+    store.dispatch(setSession({
+      sessionId: 'session_a',
+      sessionCode: 'ABC234',
+      hostPlayerId: 'player_host',
+      isHost: false,
+    }));
+    store.dispatch(setLocalPlayer({
+      playerId: 'player_a',
+      playerName: 'Ava',
+    }));
+
+    realtimeService.sendAction({
+      type: 'move',
+      playerId: 'player_b',
+      target: { q: 0, r: 0, s: 0 },
+    });
+
+    expect(realtimeService.getDiagnostics()).toHaveLength(1);
+    expect(realtimeService.getDiagnostics()[0]).toMatchObject({
+      code: 'invalid_action',
+      severity: 'warning',
+      message: 'Refused to send a local action for another player',
+      sessionId: null,
+      actionType: 'move',
+      playerId: 'player_b',
+      details: {
+        localPlayerId: 'player_a',
+        reason: 'action_player_mismatch',
+      },
     });
   });
 

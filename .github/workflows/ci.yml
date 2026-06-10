@@ -6,6 +6,19 @@ on:
     branches:
       - main
       - master
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      soak_duration_ms:
+        description: 'Long-soak browser profile duration in milliseconds'
+        required: false
+        default: '60000'
+      run_live_supabase_e2e:
+        description: 'Run the live Supabase online multiplayer smoke using repository secrets'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,8 +51,76 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Supabase Edge Function typecheck
+        run: npm run check:edge
+
       - name: Dependency audit
         run: npm audit --audit-level=moderate
 
       - name: Browser E2E
+        run: npm run test:e2e
+
+  soak-e2e:
+    name: 30-player long-soak browser profile
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOAK_E2E: '1'
+      SOAK_E2E_DURATION_MS: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_duration_ms || '60000' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Long-soak browser E2E
+        run: npm run test:e2e
+
+  live-supabase-e2e:
+    name: Live Supabase online multiplayer smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live_supabase_e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LIVE_SUPABASE_E2E: '1'
+      VITE_SUPABASE_URL: ${{ secrets.SUPABASE_E2E_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_E2E_ANON_KEY }}
+      VITE_TEST_MODE: 'true'
+      VITE_REQUIRED_TEAMS: '1'
+      VITE_REQUIRED_PLAYERS_PER_TEAM: '2'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check live Supabase E2E secrets
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+
+      - name: Live Supabase browser E2E
         run: npm run test:e2e

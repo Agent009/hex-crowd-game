@@ -34,7 +34,7 @@ export const multiplayerActionCreators = {
   craft: (playerId: string, itemId: string): GameAction => ({ type: 'craft', playerId, itemId }),
   useItem: (playerId: string, itemId: string): GameAction => ({ type: 'useItem', playerId, itemId }),
   ready: (playerId: string): GameAction => ({ type: 'ready', playerId }),
-  start: (): GameAction => ({ type: 'start' }),
+  start: (playerId: string): GameAction => ({ type: 'start', playerId }),
   proposeTrade: (payload: TradeProposalPayload): GameAction => ({ type: 'proposeTrade', payload }),
   acceptTrade: (payload: { tradeId: string; acceptingPlayerId: string }): GameAction => ({ type: 'acceptTrade', payload }),
   rejectTrade: (payload: { tradeId: string; rejectingPlayerId: string }): GameAction => ({ type: 'rejectTrade', payload }),
@@ -45,8 +45,8 @@ export const multiplayerActionCreators = {
   castSpell: (payload: CastSpellPayload): GameAction => ({ type: 'castSpell', payload }),
   recruitUnit: (playerId: string, unitId: string): GameAction => ({ type: 'recruitUnit', playerId, unitId }),
   initiateCombat: (attackerId: string, defenderId: string): GameAction => ({ type: 'initiateCombat', attackerId, defenderId }),
-  forceNextPhase: (): GameAction => ({ type: 'forceNextPhase' }),
-  endGame: (): GameAction => ({ type: 'endGame' }),
+  forceNextPhase: (playerId: string): GameAction => ({ type: 'forceNextPhase', playerId }),
+  endGame: (playerId: string): GameAction => ({ type: 'endGame', playerId }),
 };
 
 export const useMultiplayer = () => {
@@ -96,8 +96,9 @@ export const useMultiplayer = () => {
   }, []);
 
   const sendStart = useCallback(() => {
-    realtimeService.sendAction(multiplayerActionCreators.start());
-  }, []);
+    if (!localPlayerId) return;
+    realtimeService.sendAction(multiplayerActionCreators.start(localPlayerId));
+  }, [localPlayerId]);
 
   const sendProposeTrade = useCallback((payload: TradeProposalPayload) => {
     realtimeService.sendAction(multiplayerActionCreators.proposeTrade(payload));
@@ -140,12 +141,14 @@ export const useMultiplayer = () => {
   }, []);
 
   const sendForceNextPhase = useCallback(() => {
-    realtimeService.sendAction(multiplayerActionCreators.forceNextPhase());
-  }, []);
+    if (!localPlayerId) return;
+    realtimeService.sendAction(multiplayerActionCreators.forceNextPhase(localPlayerId));
+  }, [localPlayerId]);
 
   const sendEndGame = useCallback(() => {
-    realtimeService.sendAction(multiplayerActionCreators.endGame());
-  }, []);
+    if (!localPlayerId) return;
+    realtimeService.sendAction(multiplayerActionCreators.endGame(localPlayerId));
+  }, [localPlayerId]);
 
   return {
     isMultiplayer,

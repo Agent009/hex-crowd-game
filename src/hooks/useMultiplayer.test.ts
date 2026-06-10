@@ -42,6 +42,21 @@ describe('multiplayer action creators', () => {
       attackerId: 'player_a',
       defenderId: 'player_b',
     });
+
+    expect(multiplayerActionCreators.start('player_host')).toEqual({
+      type: 'start',
+      playerId: 'player_host',
+    });
+
+    expect(multiplayerActionCreators.forceNextPhase('player_host')).toEqual({
+      type: 'forceNextPhase',
+      playerId: 'player_host',
+    });
+
+    expect(multiplayerActionCreators.endGame('player_host')).toEqual({
+      type: 'endGame',
+      playerId: 'player_host',
+    });
   });
 
   it('covers the full send-action surface exposed by useMultiplayer', () => {

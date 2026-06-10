@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.98.0';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.98.0';
 
 type GamePhase =
   | 'round_start'
@@ -34,6 +34,17 @@ type GameActionType =
 interface AuthorityPayload {
   source?: string;
   request?: Record<string, unknown>;
+}
+
+interface HostAuthoritySessionRow {
+  host_player_id: string | null;
+  host_authority_token_hash: string | null;
+}
+
+interface ClaimHostSessionRow {
+  id: string;
+  game_mode: string | null;
+  game_state: unknown;
 }
 
 const corsHeaders = {
@@ -139,8 +150,16 @@ function validateWorldState(value: unknown): { valid: true } | { valid: false; e
   return { valid: true };
 }
 
+function gameStateIncludesPlayer(gameState: unknown, playerId: string): boolean {
+  if (!isRecord(gameState) || !Array.isArray(gameState.players)) return false;
+
+  return gameState.players.some(player => (
+    isRecord(player) && player.id === playerId
+  ));
+}
+
 async function verifyHost(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   sessionId: string,
   hostPlayerId: string,
   hostToken: string
@@ -151,10 +170,11 @@ async function verifyHost(
     .eq('id', sessionId)
     .maybeSingle();
 
-  if (error || !data) return { ok: false, error: 'Session not found' };
-  if (data.host_player_id !== hostPlayerId) return { ok: false, error: 'Host player mismatch' };
+  const session = data as HostAuthoritySessionRow | null;
+  if (error || !session) return { ok: false, error: 'Session not found' };
+  if (session.host_player_id !== hostPlayerId) return { ok: false, error: 'Host player mismatch' };
 
-  const expectedHash = data.host_authority_token_hash;
+  const expectedHash = session.host_authority_token_hash;
   if (!expectedHash || expectedHash !== await hashToken(hostToken)) {
     return { ok: false, error: 'Invalid host authority token' };
   }
@@ -234,8 +254,21 @@ Deno.serve(async (request) => {
     const hostPlayerId = safeString(authorityRequest.hostPlayerId, 120);
     if (!sessionId || !hostPlayerId) return jsonResponse({ error: 'Invalid claimHost payload' }, 400);
 
+    const { data: existingSession, error: lookupError } = await supabase
+      .from('game_sessions')
+      .select('id, game_mode, game_state')
+      .eq('id', sessionId)
+      .neq('game_mode', 'ended')
+      .maybeSingle();
+
+    const claimSession = existingSession as ClaimHostSessionRow | null;
+    if (lookupError || !claimSession) return jsonResponse({ error: 'Session is not claimable' }, 404);
+    if (!gameStateIncludesPlayer(claimSession.game_state, hostPlayerId)) {
+      return jsonResponse({ error: 'Claiming host must be present in saved session state' }, 403);
+    }
+
     const hostToken = randomToken();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('game_sessions')
       .update({
         host_player_id: hostPlayerId,
@@ -244,9 +277,11 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString(),
       })
       .eq('id', sessionId)
-      .neq('game_mode', 'ended');
+      .neq('game_mode', 'ended')
+      .select('id')
+      .maybeSingle();
 
-    if (error) return jsonResponse({ error: 'Failed to claim host authority' }, 500);
+    if (error || !data) return jsonResponse({ error: 'Failed to claim host authority' }, 500);
     return jsonResponse({ ok: true, sessionId, hostToken }, 202);
   }
 

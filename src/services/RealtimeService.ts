@@ -65,7 +65,7 @@ export type GameAction =
   | { type: 'join'; playerName: string; playerId: string }
   | { type: 'leave'; playerId: string }
   | { type: 'ready'; playerId: string }
-  | { type: 'start' }
+  | { type: 'start'; playerId: string }
   | { type: 'move'; playerId: string; target: { q: number; r: number; s: number } }
   | { type: 'harvest'; payload: Parameters<typeof harvestFromTile>[0] }
   | { type: 'craft'; playerId: string; itemId: string }
@@ -80,8 +80,8 @@ export type GameAction =
   | { type: 'castSpell'; payload: Parameters<typeof castSpell>[0] }
   | { type: 'recruitUnit'; playerId: string; unitId: string }
   | { type: 'initiateCombat'; attackerId: string; defenderId: string }
-  | { type: 'forceNextPhase' }
-  | { type: 'endGame' };
+  | { type: 'forceNextPhase'; playerId: string }
+  | { type: 'endGame'; playerId: string };
 
 export type RealtimeDiagnosticSeverity = 'info' | 'warning' | 'error';
 
@@ -94,6 +94,7 @@ export interface RealtimeDiagnostic {
     | 'state_sync_payload_large'
     | 'invalid_state_sync'
     | 'invalid_action'
+    | 'action_rate_limited'
     | 'persistence_save_failed'
     | 'turn_audit_failed'
     | 'player_count_update_failed'
@@ -260,6 +261,21 @@ export const STATE_SYNC_WARN_MIN_INTERVAL_MS = parsePositiveInteger(
   30000
 );
 
+export const HOST_ACTION_RATE_LIMIT_MAX_ACTIONS = parsePositiveInteger(
+  import.meta.env.VITE_HOST_ACTION_RATE_LIMIT_MAX_ACTIONS,
+  20
+);
+
+export const HOST_ACTION_RATE_LIMIT_SESSION_MAX_ACTIONS = parsePositiveInteger(
+  import.meta.env.VITE_HOST_ACTION_RATE_LIMIT_SESSION_MAX_ACTIONS,
+  60
+);
+
+export const HOST_ACTION_RATE_LIMIT_WINDOW_MS = parsePositiveInteger(
+  import.meta.env.VITE_HOST_ACTION_RATE_LIMIT_WINDOW_MS,
+  1000
+);
+
 const postRealtimeDiagnostic = async (
   diagnostic: RealtimeDiagnostic,
   fetchImpl: typeof fetch | undefined = typeof fetch === 'undefined' ? undefined : fetch
@@ -338,8 +354,16 @@ export const getGameActionAuditPlayerId = (action: GameAction): string | null =>
     case 'start':
     case 'forceNextPhase':
     case 'endGame':
-      return null;
+      return action.playerId;
   }
+};
+
+export const canSendLocalGameAction = (
+  action: GameAction,
+  localPlayerId: string | null | undefined
+): boolean => {
+  const actionPlayerId = getGameActionAuditPlayerId(action);
+  return !actionPlayerId || !localPlayerId || actionPlayerId === localPlayerId;
 };
 
 export const createPersistedStateHash = (
@@ -371,6 +395,89 @@ export const shouldRecordStateSyncPayloadWarning = (
   shouldWarnStateSyncPayloadSize(payloadBytes, warnBytes)
   && (lastWarningAtMs === null || nowMs - lastWarningAtMs >= minIntervalMs)
 );
+
+export type HostActionRateLimitBucket = {
+  windowStartedAtMs: number;
+  count: number;
+};
+
+export type HostActionRateLimitResult =
+  | { allowed: true; key: string; scope: 'actor' | 'session'; count: number; maxActions: number; windowMs: number }
+  | {
+      allowed: false;
+      key: string;
+      scope: 'actor' | 'session';
+      count: number;
+      maxActions: number;
+      windowMs: number;
+      retryAfterMs: number;
+    };
+
+export const HOST_ACTION_RATE_LIMIT_SESSION_KEY = 'session:all';
+
+export const getHostActionRateLimitKey = (action: GameAction): string => {
+  const playerId = getGameActionAuditPlayerId(action);
+  return playerId ? `player:${playerId}` : `session:${action.type}`;
+};
+
+const checkRateLimitBucket = (
+  buckets: Map<string, HostActionRateLimitBucket>,
+  key: string,
+  scope: 'actor' | 'session',
+  nowMs: number,
+  maxActions: number,
+  windowMs: number
+): HostActionRateLimitResult => {
+  const existing = buckets.get(key);
+
+  if (!existing || nowMs - existing.windowStartedAtMs >= windowMs) {
+    buckets.set(key, { windowStartedAtMs: nowMs, count: 1 });
+    return { allowed: true, key, scope, count: 1, maxActions, windowMs };
+  }
+
+  if (existing.count >= maxActions) {
+    return {
+      allowed: false,
+      key,
+      scope,
+      count: existing.count,
+      maxActions,
+      windowMs,
+      retryAfterMs: Math.max(existing.windowStartedAtMs + windowMs - nowMs, 0),
+    };
+  }
+
+  existing.count += 1;
+  return { allowed: true, key, scope, count: existing.count, maxActions, windowMs };
+};
+
+export const checkHostActionRateLimit = (
+  buckets: Map<string, HostActionRateLimitBucket>,
+  action: GameAction,
+  nowMs: number,
+  maxActions: number = HOST_ACTION_RATE_LIMIT_MAX_ACTIONS,
+  windowMs: number = HOST_ACTION_RATE_LIMIT_WINDOW_MS,
+  sessionMaxActions: number = HOST_ACTION_RATE_LIMIT_SESSION_MAX_ACTIONS
+): HostActionRateLimitResult => {
+  const sessionLimit = checkRateLimitBucket(
+    buckets,
+    HOST_ACTION_RATE_LIMIT_SESSION_KEY,
+    'session',
+    nowMs,
+    sessionMaxActions,
+    windowMs
+  );
+  if (!sessionLimit.allowed) return sessionLimit;
+
+  return checkRateLimitBucket(
+    buckets,
+    getHostActionRateLimitKey(action),
+    'actor',
+    nowMs,
+    maxActions,
+    windowMs
+  );
+};
 
 export const findReconnectablePlayer = (
   gameState: GameState,
@@ -438,10 +545,17 @@ const findHeroByOwnerId = (gameState: GameState, playerId: string) =>
 export const validateHostGameAction = (
   action: GameAction,
   gameState: GameState,
-  worldState: Pick<WorldState, 'tiles' | 'activeTiles'>
+  worldState: Pick<WorldState, 'tiles' | 'activeTiles'>,
+  options: { hostPlayerId?: string | null } = {}
 ): HostActionValidation => {
   const player = (playerId: string) => gameState.players.find(p => p.id === playerId) ?? null;
   const stats = (playerId: string) => gameState.playerStats[playerId] ?? null;
+  const validateHostControlAction = (playerId: string) => {
+    if (!options.hostPlayerId) return invalidAction('Host identity is unavailable');
+    return playerId === options.hostPlayerId
+      ? validAction
+      : invalidAction('Only the host can perform this action');
+  };
 
   switch (action.type) {
     case 'join':
@@ -459,6 +573,8 @@ export const validateHostGameAction = (
       return player(action.playerId) ? validAction : invalidAction('Player is not in this session');
 
     case 'start': {
+      const hostValidation = validateHostControlAction(action.playerId);
+      if (!hostValidation.valid) return hostValidation;
       if (gameState.gameMode !== 'lobby') return invalidAction('Game has already started');
       const teamsWithPlayers = gameState.teams.filter(team => team.playerIds.length >= requiredPlayersPerTeam);
       const allPlayersReady = gameState.players.length > 0 && gameState.players.every(p => p.isReady);
@@ -696,16 +812,23 @@ export const validateHostGameAction = (
         : invalidAction('Attacker lacks combat AP');
     }
 
-    case 'forceNextPhase':
+    case 'forceNextPhase': {
+      const hostValidation = validateHostControlAction(action.playerId);
+      if (!hostValidation.valid) return hostValidation;
       return gameState.gameMode === 'playing' ? validAction : invalidAction('Phase can only be advanced while playing');
+    }
 
-    case 'endGame':
+    case 'endGame': {
+      const hostValidation = validateHostControlAction(action.playerId);
+      if (!hostValidation.valid) return hostValidation;
       return gameState.gameMode !== 'ended' ? validAction : invalidAction('Game has already ended');
+    }
   }
 };
 
 interface HostGameActionContext {
   isHost: boolean;
+  hostPlayerId: string | null;
   gameState: GameState;
   tiles: WorldState['tiles'];
   activeTiles: WorldState['activeTiles'];
@@ -715,7 +838,9 @@ interface HostGameActionContext {
   startHostLoop: () => void;
   stopHostLoop: () => void;
   queueTurnActionAudit: (action: GameAction) => void;
-  recordRejectedAction?: (action: GameAction, reason: string) => void;
+  rateLimitAction?: (action: GameAction) => HostActionRateLimitResult;
+  recordRejectedAction?: (action: GameAction, reason: string, details?: Record<string, unknown>) => void;
+  recordRateLimitedAction?: (action: GameAction, limit: Extract<HostActionRateLimitResult, { allowed: false }>) => void;
 }
 
 export const applyHostGameAction = (
@@ -724,9 +849,17 @@ export const applyHostGameAction = (
 ): boolean => {
   if (!context.isHost) return false;
 
+  const rateLimit = context.rateLimitAction?.(action);
+  if (rateLimit && !rateLimit.allowed) {
+    context.recordRateLimitedAction?.(action, rateLimit);
+    return false;
+  }
+
   const validation = validateHostGameAction(action, context.gameState, {
     tiles: context.tiles,
     activeTiles: context.activeTiles,
+  }, {
+    hostPlayerId: context.hostPlayerId,
   });
   if (!validation.valid) {
     context.recordRejectedAction?.(action, validation.reason);
@@ -871,6 +1004,7 @@ export type StateSyncPayload = {
 };
 
 export type StateSyncEnvelope = StateSyncPayload & {
+  sessionId: string;
   sequence: number;
   sentAt: string;
   stateHash: string;
@@ -878,9 +1012,20 @@ export type StateSyncEnvelope = StateSyncPayload & {
 
 const isStateSyncEnvelope = (payload: unknown): payload is StateSyncEnvelope => (
   isRecord(payload)
+  && typeof payload.sessionId === 'string'
   && Number.isInteger(payload.sequence)
   && typeof payload.sentAt === 'string'
   && typeof payload.stateHash === 'string'
+);
+
+const hasStateSyncEnvelopeFields = (payload: unknown): boolean => (
+  isRecord(payload)
+  && (
+    'sessionId' in payload
+    || 'sequence' in payload
+    || 'sentAt' in payload
+    || 'stateHash' in payload
+  )
 );
 
 const extractStateSyncPayload = (payload: unknown): StateSyncPayload | null => {
@@ -893,10 +1038,12 @@ export const createStateSyncEnvelope = (
   gameState: GameState,
   worldState: WorldState,
   sequence: number,
+  sessionId: string,
   sentAt = new Date().toISOString()
 ): StateSyncEnvelope => ({
   gameState,
   worldState,
+  sessionId,
   sequence,
   sentAt,
   stateHash: createPersistedStateHash(gameState, worldState),
@@ -910,7 +1057,12 @@ export const shouldApplyStateSyncSequence = (
 export const validateStateSyncPayload = (payload: unknown): HostActionValidation => {
   if (!isRecord(payload)) return invalidAction('State sync payload must be an object');
 
+  if (hasStateSyncEnvelopeFields(payload) && !isStateSyncEnvelope(payload)) {
+    return invalidAction('State sync envelope is malformed');
+  }
+
   if (isStateSyncEnvelope(payload)) {
+    if (payload.sessionId.trim() === '') return invalidAction('State sync session is invalid');
     if (payload.sequence < 1) return invalidAction('State sync sequence is invalid');
     if (Number.isNaN(Date.parse(payload.sentAt))) return invalidAction('State sync timestamp is invalid');
   }
@@ -1032,13 +1184,23 @@ export const applyStateSyncPayload = (
   dispatch: DispatchLike,
   onInvalidPayload?: (reason: string) => void,
   lastAppliedSequence: number | null = null,
-  onSequenceApplied?: (sequence: number) => void
+  onSequenceApplied?: (sequence: number) => void,
+  expectedSessionId?: string | null
 ): boolean => {
   if (isHost) return false;
 
   const validation = validateStateSyncPayload(payload);
   if (!validation.valid) {
     onInvalidPayload?.(validation.reason);
+    return false;
+  }
+
+  if (
+    expectedSessionId
+    && isStateSyncEnvelope(payload)
+    && payload.sessionId !== expectedSessionId
+  ) {
+    onInvalidPayload?.(`State sync session ${payload.sessionId} does not match ${expectedSessionId}`);
     return false;
   }
 
@@ -1060,12 +1222,24 @@ export const applyStateSyncPayload = (
   return true;
 };
 
+export type HostMigrationPayload = {
+  sessionId?: string;
+  newHostId: string;
+};
+
 export const applyHostMigrationPayload = (
-  payload: { newHostId: string },
+  payload: HostMigrationPayload,
   dispatch: DispatchLike,
   startHostLoopIfPromoted: () => void,
-  getIsHostAfterPromotion: () => boolean
+  getIsHostAfterPromotion: () => boolean,
+  expectedSessionId?: string | null,
+  onInvalidPayload?: (reason: string) => void
 ): boolean => {
+  if (expectedSessionId && payload.sessionId && payload.sessionId !== expectedSessionId) {
+    onInvalidPayload?.(`Host migration session ${payload.sessionId} does not match ${expectedSessionId}`);
+    return false;
+  }
+
   dispatch(promoteToHost(payload.newHostId));
 
   if (getIsHostAfterPromotion()) {
@@ -1268,6 +1442,7 @@ class RealtimeService {
   private lastAppliedStateSyncSequence: number | null = null;
   private lastBroadcastStateSyncHash: string | null = null;
   private lastStateSyncPayloadWarningAtMs: number | null = null;
+  private hostActionRateLimitBuckets = new Map<string, HostActionRateLimitBucket>();
 
   getDiagnostics(): readonly RealtimeDiagnostic[] {
     return this.diagnostics;
@@ -1282,6 +1457,10 @@ class RealtimeService {
     this.lastAppliedStateSyncSequence = null;
     this.lastBroadcastStateSyncHash = null;
     this.lastStateSyncPayloadWarningAtMs = null;
+  }
+
+  private resetHostActionRateLimits() {
+    this.hostActionRateLimitBuckets.clear();
   }
 
   private cancelPendingPlayerDisconnect(playerId: string) {
@@ -1569,6 +1748,7 @@ class RealtimeService {
         await supabase.removeChannel(this.channel);
       }
       this.resetStateSyncOrdering();
+      this.resetHostActionRateLimits();
 
       this.channel = supabase.channel(`game:${sessionId}`, {
       config: { presence: { key: playerId } },
@@ -1599,11 +1779,12 @@ class RealtimeService {
           this.lastAppliedStateSyncSequence,
           (sequence) => {
             this.lastAppliedStateSyncSequence = sequence;
-          }
+          },
+          this.sessionId
         );
       })
       .on('broadcast', { event: 'host_migration' }, (payload) => {
-        const migrationPayload = payload.payload as { newHostId: string };
+        const migrationPayload = payload.payload as HostMigrationPayload;
         applyHostMigrationPayload(
           migrationPayload,
           store.dispatch,
@@ -1620,7 +1801,21 @@ class RealtimeService {
             });
             this.startHostLoop();
           },
-          () => store.getState().session.isHost
+          () => store.getState().session.isHost,
+          this.sessionId,
+          (reason) => {
+            const latestState = store.getState();
+            this.recordDiagnostic({
+              code: 'invalid_action',
+              severity: 'warning',
+              message: `Rejected invalid host migration: ${reason}`,
+              sessionId: this.sessionId,
+              playerId: migrationPayload.newHostId,
+              roundNumber: latestState.game.roundNumber,
+              phase: latestState.game.currentPhase,
+              details: { reason },
+            });
+          }
         );
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
@@ -1656,6 +1851,7 @@ class RealtimeService {
 
     applyHostGameAction(action, {
       isHost: state.session.isHost,
+      hostPlayerId: state.session.hostPlayerId,
       gameState: state.game,
       tiles: state.world.tiles,
       activeTiles: state.world.activeTiles,
@@ -1667,7 +1863,12 @@ class RealtimeService {
       startHostLoop: () => this.startHostLoop(),
       stopHostLoop: () => this.stopHostLoop(),
       queueTurnActionAudit: (queuedAction) => this.queueTurnActionAudit(queuedAction),
-      recordRejectedAction: (rejectedAction, reason) => {
+      rateLimitAction: (limitedAction) => checkHostActionRateLimit(
+        this.hostActionRateLimitBuckets,
+        limitedAction,
+        Date.now()
+      ),
+      recordRejectedAction: (rejectedAction, reason, details) => {
         this.recordDiagnostic({
           code: 'invalid_action',
           severity: 'warning',
@@ -1677,7 +1878,27 @@ class RealtimeService {
           playerId: getGameActionAuditPlayerId(rejectedAction),
           roundNumber: state.game.roundNumber,
           phase: state.game.currentPhase,
-          details: { reason },
+          details: { reason, ...details },
+        });
+      },
+      recordRateLimitedAction: (limitedAction, limit) => {
+        this.recordDiagnostic({
+          code: 'action_rate_limited',
+          severity: 'warning',
+          message: 'Rejected host action because the actor exceeded the action rate limit',
+          sessionId: this.sessionId,
+          actionType: limitedAction.type,
+          playerId: getGameActionAuditPlayerId(limitedAction),
+          roundNumber: state.game.roundNumber,
+          phase: state.game.currentPhase,
+          details: {
+            rateLimitKey: limit.key,
+            scope: limit.scope,
+            count: limit.count,
+            maxActions: limit.maxActions,
+            windowMs: limit.windowMs,
+            retryAfterMs: limit.retryAfterMs,
+          },
         });
       },
     });
@@ -1685,6 +1906,22 @@ class RealtimeService {
 
   sendAction(action: GameAction) {
     const session = store.getState().session;
+
+    if (!canSendLocalGameAction(action, session.localPlayerId)) {
+      this.recordDiagnostic({
+        code: 'invalid_action',
+        severity: 'warning',
+        message: 'Refused to send a local action for another player',
+        sessionId: this.sessionId,
+        actionType: action.type,
+        playerId: getGameActionAuditPlayerId(action),
+        details: {
+          localPlayerId: session.localPlayerId,
+          reason: 'action_player_mismatch',
+        },
+      });
+      return;
+    }
 
     if (session.isHost) {
       this.handleRemoteAction(action);
@@ -1762,7 +1999,8 @@ class RealtimeService {
     const envelope = createStateSyncEnvelope(
       state.game,
       state.world,
-      this.stateSyncSequence + 1
+      this.stateSyncSequence + 1,
+      this.sessionId ?? ''
     );
     const payloadBytes = measureJsonPayloadBytes(envelope);
     const payloadWarningAtMs = Date.now();
@@ -2024,7 +2262,7 @@ class RealtimeService {
         this.channel?.send({
           type: 'broadcast',
           event: 'host_migration',
-          payload: { newHostId },
+          payload: { sessionId: this.sessionId ?? undefined, newHostId },
         });
 
         void this.claimHostAuthority(newHostId).catch(error => {
@@ -2142,6 +2380,7 @@ class RealtimeService {
     this.lastSavedStateHash = null;
     this.hostAuthorityToken = null;
     this.resetStateSyncOrdering();
+    this.resetHostActionRateLimits();
     store.dispatch(clearSession());
   }
 }

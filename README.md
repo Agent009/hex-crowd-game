@@ -14,8 +14,8 @@
 * Trading & Bartering: Player-to-player proposals, acceptance/rejection, validation, and history
 * Hero, Army & Combat System: Hero recruitment, rest, skills, spells, unit recruitment, adjacent combat, XP, and combat reports
 * Victory Conditions: Solo/team winner detection, victory overlay, reset/play-again flow, and final stats
-* Multiplayer Infrastructure: Supabase Realtime host-authoritative sessions, host action/state-sync validation, ordered/deduplicated host snapshots, auth, reconnect, disconnect grace-window handling, host migration, optional session authority gateway, persistence, and action audit logging
-* Production Hardening: Missing-env fallbacks, canvas error recovery, focused Vitest coverage, Playwright local-game smoke/profile coverage, gated live Supabase E2E and long-soak harnesses, chunk splitting, and material-rich Phaser hex rendering
+* Multiplayer Infrastructure: Supabase Realtime host-authoritative sessions, local action ownership checks, host action/state-sync validation, host-control authorization, actor/session rate limiting, session-scoped ordered/deduplicated host snapshots and host migration, auth, reconnect, disconnect grace-window handling, optional session authority gateway, persistence, and action audit logging
+* Production Hardening: Missing-env fallbacks, canvas error recovery, focused Vitest coverage, Playwright local-game smoke/profile coverage with canvas pixel-richness assertions, gated live Supabase E2E and long-soak harnesses, chunk splitting, and material-rich Phaser hex rendering with contour/edge accenting
 
 ### Production Readiness Runbook
 
@@ -28,9 +28,9 @@ See `ProductionReadiness.md` for release gates, the default GitHub Actions CI wo
 * Status: Needs deeper production validation
 ##### Requirements:
 
-* Run the gated live online E2E harness for create/join/reconnect against a Supabase test project
-* Promote the live persisted-state restoration check into CI once Supabase test credentials and RLS policy are agreed
-* Run the opt-in long-soak profile in CI or a configured local profile window and tune release thresholds/cadence
+* Configure the manual live Supabase CI secrets and run the create/join/reconnect harness against a Supabase test project
+* Promote the live persisted-state restoration check from manual dispatch to scheduled CI once Supabase test credentials and RLS policy are agreed
+* Review scheduled/manual long-soak CI results and tune release thresholds/cadence
 * Deploy and validate the optional session authority gateway, then decide whether gameplay actions also need a fully server-authoritative simulation layer
 
 #### 2. Operational Readiness
@@ -49,10 +49,13 @@ See `ProductionReadiness.md` for release gates, the default GitHub Actions CI wo
 
 * Game state is split across domain slices (`game`, `world`, `ui`, `session`, and `auth`)
 * Online sessions use host-authoritative shared state over Supabase Realtime
+* Local clients refuse to emit player-owned realtime actions for a different local player ID before broadcast
 * Host-side action validation blocks malformed/unauthorised realtime actions before dispatch, state sync, or audit logging
-* Client-side state-sync validation rejects malformed or stale host snapshots before replacing local game/world state
+* Host-control actions carry the actor player ID and are rejected unless issued by the current host
+* Host-routed actions are rate-limited per actor and per session before dispatch, state sync, or audit logging
+* Client-side state-sync validation rejects malformed, stale, or wrong-session host snapshots before replacing local game/world state
 * Active-session checks report saved-state validity, and in-progress joins/reconnects validate persisted Supabase state before restoring local Redux state
-* State-sync payloads are sequenced, deduplicated, and measured against a configurable throttled warning budget
+* State-sync payloads are session-scoped, sequenced, deduplicated, and measured against a configurable throttled warning budget
 * Presence disconnects use a configurable grace window before game removal or host migration, and rejoins cancel pending finalization
 * Production can route session creation, host saves, player-count updates, turn-audit writes, host claims, and session-end writes through the optional `session-authority` Edge Function
 
@@ -78,11 +81,11 @@ interface GameStateArchitecture {
 
 * Dirty-tile Phaser redraws avoid full world rerenders on ordinary updates
 * `GameCanvas` lazy-loads the Phaser chunk after leaving the lobby
-* Local Playwright coverage includes 30-player startup and sustained frame sampling
+* Local Playwright coverage includes 30-player startup, sustained frame sampling, canvas pixel-richness assertions, and a verified 60-second 30-player soak profile
 
 ##### Remaining:
 
-* Run the opt-in long-soak profile in CI or a dedicated profiling environment
+* Review scheduled/manual long-soak CI results and tune the release threshold/cadence
 * Tune state-sync payload warning thresholds and network payload strategy after live Supabase E2E/profile results
 * Revisit tile virtualization only if future maps grow beyond the current 91-tile board
 

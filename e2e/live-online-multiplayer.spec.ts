@@ -1,6 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
+import { expectCanvasHasRichRendering } from './canvasQuality';
 
 const ENV_FILES = ['.env.local', '.env.test', '.env.development', '.env'];
 
@@ -113,6 +114,7 @@ test.describe('live Supabase online multiplayer', () => {
       await expect(guestPage.getByText('Round 1', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(hostPage.getByTestId('game-canvas')).toBeVisible();
       await expect(guestPage.getByTestId('game-canvas')).toBeVisible();
+      await expectCanvasHasRichRendering(hostPage);
 
       await hostPage.waitForTimeout(6_500);
 
@@ -127,6 +129,7 @@ test.describe('live Supabase online multiplayer', () => {
 
       await expect(reconnectPage.getByText('Round 1', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(reconnectPage.getByTestId('game-canvas')).toBeVisible();
+      await expectCanvasHasRichRendering(reconnectPage);
 
       expect(failures.filter(error => !error.includes('favicon'))).toEqual([]);
     } finally {

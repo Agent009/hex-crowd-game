@@ -1,6 +1,6 @@
 # Improvements Status
 
-**Last updated:** 2026-06-10 — hero/combat play surface, multiplayer action routing/auditing, host action/state-sync validation, persisted-state restore/status validation, ordered/deduplicated state-sync delivery, throttled state-sync payload budget diagnostics, disconnect grace-window handling, optional session authority gateway, Supabase runtime guard, realtime diagnostics export and sink, Supabase data-integrity hardening, material-rich hex/hero board visuals, canvas error recovery, focused unit/realtime/session/E2E tests, optional live Supabase E2E and long-soak harnesses, CI quality gates, production readiness runbook, 30-player load and sustained browser-runtime profiling, reconnect identity hardening, production chunk splitting, Vite 8 migration, and clean dependency audit.
+**Last updated:** 2026-06-10 — hero/combat play surface, multiplayer action routing/auditing, local action ownership checks, host action/state-sync validation, host-control authorization, actor/session action-rate limiting, persisted-state restore/status validation, session-scoped ordered/deduplicated state-sync and host-migration delivery, throttled state-sync payload budget diagnostics, disconnect grace-window handling, optional session authority gateway, Supabase runtime guard, realtime diagnostics export and sink, Supabase data-integrity hardening, material-rich hex/hero board visuals, canvas error recovery, focused unit/realtime/session/E2E tests with canvas pixel-richness assertions, manual live Supabase CI E2E gate, locally verified long-soak profile, scheduled/manual long-soak CI gate, Supabase Edge Function CI typecheck, production readiness runbook, 30-player load and sustained browser-runtime profiling, reconnect identity hardening, production chunk splitting, Vite 8 migration, and clean dependency audit.
 
 ## Overview
 
@@ -159,17 +159,18 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
   - **Local mode preserved**: Local Game mode works exactly as before with no network dependency.
   - **2026-06-09 hardening:** Harvesting, crafting, item use, trading, movement, hero recruitment/rest/skills/spells/units, and combat now route through the multiplayer service in online mode instead of dispatching client-local state changes.
   - **2026-06-09 identity fix:** `joinGame` accepts a host/client-provided `playerId`, preventing client/host player ID drift during online joins.
+  - **2026-06-10 local ownership guard:** Clients refuse to emit player-owned realtime actions for a different local player ID before broadcast or host-local dispatch, reducing accidental cross-player control paths while host-side validation remains authoritative.
   - **2026-06-09 auditability:** Host-routed actions now queue non-blocking `game_turn_history` writes with action type, derived player ID, round, phase, and payload.
   - **2026-06-09 diagnostics:** Realtime service keeps bounded diagnostics for missing channels, failed action broadcasts, invalid/rejected host actions, rejected malformed state-sync snapshots, disconnect grace-window expirations, failed state-sync broadcasts, persistence save failures, audit write failures, player-count update failures, and disconnect update failures. Diagnostics are also emitted as browser `hex:realtime-diagnostic` events and can be POSTed to `VITE_REALTIME_DIAGNOSTICS_ENDPOINT`.
   - **2026-06-09 host validation:** Host-authoritative action handling validates lobby joins/readiness/start, movement, harvesting, crafting, item use, trades, heroes, skills, spells, units, combat, phase control, and malformed/negative resource trade payloads before dispatching, syncing, or auditing.
   - **2026-06-09 state-sync validation:** Clients validate host snapshots before applying them, rejecting malformed mode/phase/player/team/stat/hero data, invalid world tiles, terrain keys, coordinate-key mismatches, active-tile references, and stale sequenced snapshots with an `invalid_state_sync` diagnostic.
-  - **2026-06-09 ordered sync:** Host state-sync broadcasts now include a monotonic sequence, timestamp, and state hash. Clients reject out-of-order sequenced snapshots while still accepting legacy unsequenced payloads for compatibility.
+  - **2026-06-10 session-scoped sync:** Host state-sync broadcasts now include the active session ID plus a monotonic sequence, timestamp, and state hash. Clients reject malformed, wrong-session, or out-of-order sequenced snapshots while still accepting legacy unsequenced payloads for compatibility.
   - **2026-06-09 sync dedupe:** Hosts skip exact-match state-sync broadcasts when the game/world hash matches the last successfully sent snapshot, reducing redundant realtime traffic after no-op state changes or repeated sync requests.
   - **2026-06-10 payload budget diagnostics:** Hosts measure sequenced state-sync payload size and emit throttled `state_sync_payload_large` warnings when snapshots exceed `VITE_STATE_SYNC_WARN_BYTES`, giving production an early signal before Realtime payload size becomes a live issue without flooding diagnostics.
   - **2026-06-09 disconnect handling:** Presence leaves are now debounced through a configurable grace window before game removal or host migration. Rejoins cancel pending disconnect finalization, reducing false eliminations during transient network drops.
   - **2026-06-09 authority gateway:** Production can configure `VITE_SESSION_AUTHORITY_ENDPOINT` to route host session creation, persistence saves, player-count updates, turn-audit writes, host claims, and session-end writes through the `session-authority` Supabase Edge Function with hashed host authority tokens instead of direct anonymous table updates.
   - **2026-06-09 contract coverage:** Host-authoritative action handling is extracted and covered by local tests for non-host ignore behaviour, host join/move/start/end side effects, invalid action rejection, negative trade-resource rejection, state-sync triggers, malformed state-sync rejection, player-count updates, and audit queuing.
-  - **2026-06-09 mocked channel coverage:** Realtime state-sync, host-migration, presence join/leave, deferred disconnect callbacks, rejoin cancellation checks, and deterministic next-host selection are covered by local tests without a live Supabase project.
+  - **2026-06-10 mocked channel coverage:** Realtime state-sync, wrong-session sync rejection, host-migration, wrong-session migration rejection, presence join/leave, deferred disconnect callbacks, rejoin cancellation checks, and deterministic next-host selection are covered by local tests without a live Supabase project.
 
 ### P2 — Game Session Persistence — COMPLETE
 - **Status:** Done
@@ -207,15 +208,17 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 - **Notes:** The Phaser board renderer now uses darker canvas background, stronger grid contrast, layered gradient hex fills, terrain-specific vector decoration, inactive-tile hatching, team-coloured player badges, and hero class markers.
 - **2026-06-09 enhancement:** Added under-tile shadows, wider hover/selection halos, class-coloured hero badge backgrounds, and hero HP rings so commanders are readable on the board without opening the hero panel.
 - **2026-06-09 material pass:** Added beveled top-down rims, deterministic tile grain, lake glints, river banks/highlights, mountain ridge lines, desert texture, plains grass tufts, and denser forest canopy detail inside the existing tile graphics object lifecycle.
+- **2026-06-10 proof:** Added Playwright PNG byte-level canvas checks so local, 30-player, and gated live paths assert rendered board size, opacity, colour variety, detail pixels, and contrast instead of only checking that a screenshot file exists.
+- **2026-06-10 contour pass:** Added optimized inner contour rings and terrain-coloured edge accents that improve tile readability while preserving the 30-player browser frame thresholds.
 - **Runtime fix:** Replaced unsupported Phaser `Graphics.quadraticCurveTo` calls with segmented line drawing after browser smoke exposed the runtime error.
 
 ### G2 — Browser Smoke / Runtime Resilience — COMPLETE
 - **Status:** Done
-- **Notes:** In-app browser verified the lobby renders without Supabase env and exposed runtime issues that were fixed. Playwright now provides repeatable repo coverage through `npm run test:e2e`: it starts a two-player local game, checks the running round HUD, verifies the Hero Command control, confirms a single visible Phaser canvas, checks canvas dimensions, and captures the rendered canvas. A second Playwright test fills a 30-player local roster through the UI, starts the game, checks startup timing, samples animation-frame responsiveness immediately and after a sustained post-start window, optionally checks heap sanity, and captures the rendered canvas.
+- **Notes:** In-app browser verified the lobby renders without Supabase env and exposed runtime issues that were fixed. Playwright now provides repeatable repo coverage through `npm run test:e2e`: it starts a two-player local game, checks the running round HUD, verifies the Hero Command control, confirms a single visible Phaser canvas, checks canvas dimensions, captures the rendered canvas, and asserts screenshot-byte colour/detail/contrast richness. A second Playwright test fills a 30-player local roster through the UI, starts the game, checks startup timing, samples animation-frame responsiveness immediately and after a sustained post-start window, optionally checks heap sanity, captures the rendered canvas, and applies the same pixel-richness assertions.
 
 ### G3 — Domain Test Harness — COMPLETE
 - **Status:** Done
-- **Notes:** Added Vitest and wired `npm run check` to typecheck, lint, and run tests. Current coverage includes combat engine calculations/resolution, reducer-level hero/combat flows, Supabase-not-configured fallbacks, audited action player-ID derivation, realtime diagnostics, diagnostics export request/event helpers, session authority request envelopes, persisted game/world-state hash coverage, persisted-state restore validation, sequenced state-sync envelopes/stale rejection, state-sync dedupe decisions, state-sync payload budget warnings, multiplayer action-creator payload contracts, host-authoritative realtime action handling and validation, invalid action rejection, negative trade-resource rejection, malformed state-sync rejection, deferred disconnect finalization, mocked realtime channel lifecycle handling, session/reconnect persistence contracts, reconnect identity resolution, and 30-player full-roster start regression.
+- **Notes:** Added Vitest and wired `npm run check` to typecheck, lint, and run tests. Current coverage includes combat engine calculations/resolution, reducer-level hero/combat flows, Supabase-not-configured fallbacks, audited action player-ID derivation, local action ownership checks, realtime diagnostics, diagnostics export request/event helpers, session authority request envelopes, persisted game/world-state hash coverage, persisted-state restore validation, session-scoped sequenced state-sync envelopes/stale/wrong-session rejection, state-sync dedupe decisions, state-sync payload budget warnings, multiplayer action-creator payload contracts, host-authoritative realtime action handling and validation, host-control authorization, actor/session action-rate limiting, invalid action rejection, negative trade-resource rejection, malformed state-sync rejection, wrong-session host-migration rejection, deferred disconnect finalization, mocked realtime channel lifecycle handling, session/reconnect persistence contracts, reconnect identity resolution, and 30-player full-roster start regression.
 
 ### G4 — Production Bundle Splitting — COMPLETE
 - **Status:** Done
@@ -231,7 +234,7 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ### G7 — Live Online Multiplayer E2E Harness — COMPLETE
 - **Status:** Done
-- **Notes:** Added stable data-test IDs for the online create/join/reconnect lobby paths and a gated Playwright live smoke in `e2e/live-online-multiplayer.spec.ts`. The spec is skipped by default, and runs only with `LIVE_SUPABASE_E2E=1`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`. It uses three browser contexts to create a host session, join a guest, ready/start the game, wait for host persistence, reconnect from a fresh context, verify the live canvas, and best-effort mark the created session ended.
+- **Notes:** Added stable data-test IDs for the online create/join/reconnect lobby paths and a gated Playwright live smoke in `e2e/live-online-multiplayer.spec.ts`. The spec is skipped by default, and runs only with `LIVE_SUPABASE_E2E=1`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`. It uses three browser contexts to create a host session, join a guest, ready/start the game, wait for host persistence, reconnect from a fresh context, verify the live canvas, assert rendered canvas PNG richness, and best-effort mark the created session ended. The CI workflow has a manual dispatch gate for this smoke using `SUPABASE_E2E_URL` and `SUPABASE_E2E_ANON_KEY` repository secrets.
 
 ### G8 — Production Readiness Runbook — COMPLETE
 - **Status:** Done
@@ -239,11 +242,11 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ### G9 — Long-Soak Browser Profile Harness — COMPLETE
 - **Status:** Done
-- **Notes:** Added `e2e/local-soak.spec.ts`, gated by `SOAK_E2E=1`, with configurable `SOAK_E2E_DURATION_MS`. The spec fills a 30-player local game, starts the Phaser scene, samples animation frames every 5 seconds for the configured duration, checks optional heap data, and fails on console errors.
+- **Notes:** Added `e2e/local-soak.spec.ts`, gated by `SOAK_E2E=1`, with configurable `SOAK_E2E_DURATION_MS`. The spec fills a 30-player local game, starts the Phaser scene, samples animation frames every 5 seconds for the configured duration, checks optional heap data, and fails on console errors. Verified locally on 2026-06-10 with `SOAK_E2E=1 SOAK_E2E_DURATION_MS=60000 npm run test:e2e`.
 
 ### G10 — CI Quality Gates — COMPLETE
 - **Status:** Done
-- **Notes:** Added `.github/workflows/ci.yml` to run `npm ci`, Playwright Chromium install, `npm run check`, `npm run build`, `npm audit --audit-level=moderate`, and default `npm run test:e2e` on pull requests and pushes to `main`/`master`.
+- **Notes:** Added `.github/workflows/ci.yml` to run `npm ci`, Playwright Chromium install, `npm run check`, `npm run build`, `npm run check:edge`, `npm audit --audit-level=moderate`, and default `npm run test:e2e` on pull requests and pushes to `main`/`master`. Added a separate scheduled/manual 30-player long-soak job that runs with `SOAK_E2E=1` and a manual live Supabase smoke job for configured test-project secrets.
 
 ### G11 — Supabase Data Integrity Hardening — COMPLETE
 - **Status:** Done
@@ -251,7 +254,7 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ### G12 — Realtime Diagnostics Sink — COMPLETE
 - **Status:** Done
-- **Notes:** Added `supabase/migrations/20260609233000_create_realtime_diagnostics.sql` and `supabase/functions/realtime-diagnostics/index.ts` so `VITE_REALTIME_DIAGNOSTICS_ENDPOINT` can target a Supabase Edge Function that validates and stores sanitized diagnostics, including rejected malformed state-sync snapshots and disconnect grace-window expirations.
+- **Notes:** Added `supabase/migrations/20260609233000_create_realtime_diagnostics.sql` and `supabase/functions/realtime-diagnostics/index.ts` so `VITE_REALTIME_DIAGNOSTICS_ENDPOINT` can target a Supabase Edge Function that validates and stores sanitized diagnostics, including rejected malformed state-sync snapshots, action-rate-limit rejections, and disconnect grace-window expirations. Added `supabase/migrations/20260610001000_allow_action_rate_limited_diagnostics.sql` so existing test projects can accept the new `action_rate_limited` diagnostic code.
 
 ### G13 — Canvas Error Recovery — COMPLETE
 - **Status:** Done
@@ -259,7 +262,11 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 
 ### G14 — Session Authority Gateway — COMPLETE
 - **Status:** Done
-- **Notes:** Added `supabase/functions/session-authority/index.ts` and `supabase/migrations/20260609235000_add_session_authority_gateway.sql`. Production can deploy the Edge Function and set `VITE_SESSION_AUTHORITY_ENDPOINT` so gateway-created sessions store a hashed host authority token and reject direct anonymous session updates/turn-history inserts. Direct Supabase writes remain as a local/dev fallback for sessions without an authority token.
+- **Notes:** Added `supabase/functions/session-authority/index.ts` and `supabase/migrations/20260609235000_add_session_authority_gateway.sql`. Production can deploy the Edge Function and set `VITE_SESSION_AUTHORITY_ENDPOINT` so gateway-created sessions store a hashed host authority token and reject direct anonymous session updates/turn-history inserts. Host migration claims now require the claiming player to be present in the saved session roster before a new authority token is issued. Direct Supabase writes remain as a local/dev fallback for sessions without an authority token.
+
+### G15 — Host-Control Authorization & Rate Limiting — COMPLETE
+- **Status:** Done
+- **Notes:** Host-control realtime actions (`start`, `forceNextPhase`, and `endGame`) now include the actor player ID and are rejected unless that actor matches the current host. Host-routed actions are also rate-limited per actor and per session before validation, dispatch, state sync, or audit logging, so unique-ID join floods still hit a session ceiling. Rate-limit rejections emit `action_rate_limited` diagnostics and can be tuned with `VITE_HOST_ACTION_RATE_LIMIT_MAX_ACTIONS`, `VITE_HOST_ACTION_RATE_LIMIT_SESSION_MAX_ACTIONS`, and `VITE_HOST_ACTION_RATE_LIMIT_WINDOW_MS`.
 
 ---
 
@@ -273,8 +280,8 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 | H — Hero System | 10 | 0 | 0 | 10 |
 | B — Building System | 1 | 0 | 0 | 1 |
 | P — Infrastructure | 3 | 0 | 0 | 3 |
-| G — Hex Graphics & Production Hardening | 14 | 0 | 0 | 14 |
-| **TOTAL** | **40** | **0** | **0** | **40** |
+| G — Hex Graphics & Production Hardening | 15 | 0 | 0 | 15 |
+| **TOTAL** | **41** | **0** | **0** | **41** |
 
 ---
 
@@ -304,12 +311,13 @@ Work through items in this sequence to respect dependencies and deliver value in
 20. **G12** — Realtime diagnostics sink
 21. **G13** — Canvas error recovery
 22. **G14** — Session authority gateway
+23. **G15** — Host-control authorization and rate limiting
 
 ## Next production-hardening prompt
 
 Continue from the 2026-06-09 tranche. Priorities:
 
-1. Run `LIVE_SUPABASE_E2E=1 npm run test:e2e` against a Supabase test project and record the live create/join/reconnect plus persisted-state restoration result.
-2. Run `SOAK_E2E=1 SOAK_E2E_DURATION_MS=60000 npm run test:e2e` in CI or a configured local profile window and tune the release threshold/cadence.
+1. Configure `SUPABASE_E2E_URL` and `SUPABASE_E2E_ANON_KEY`, run the manual live Supabase CI gate or `LIVE_SUPABASE_E2E=1 npm run test:e2e` against a Supabase test project, and record the live create/join/reconnect plus persisted-state restoration result.
+2. Review scheduled/manual long-soak CI results and tune the release threshold/cadence.
 3. Deploy and validate the optional session authority gateway against a Supabase test project, then decide whether gameplay actions also need a fully server-authoritative simulation layer.
 4. Decide whether the included realtime diagnostics Edge Function is the final sink or a forwarding layer to another monitoring platform.

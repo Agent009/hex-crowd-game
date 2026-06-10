@@ -439,6 +439,7 @@ export class GameScene extends Phaser.Scene {
     const size = this.hexSize;
 
     this.drawSurfaceGrain(graphics, tile, baseColor, active);
+    this.drawTerrainFacetAccents(graphics, tile, baseColor, active);
     graphics.lineStyle(1.5, detailColor, active ? 0.65 : 0.25);
 
     switch (tile.terrain) {
@@ -655,6 +656,37 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawTerrainFacetAccents(
+    graphics: Phaser.GameObjects.Graphics,
+    tile: HexTile,
+    baseColor: number,
+    active: boolean
+  ) {
+    const size = this.hexSize;
+    const accentColor = this.terrainAccentColor(tile.terrain, baseColor);
+    const innerPoints = getHexPoints(0, 0, size * 0.72);
+    const outerPoints = getHexPoints(0, 0, size - 4);
+    const alpha = active ? 0.34 : 0.12;
+
+    graphics.lineStyle(1.25, this.mixColor(accentColor, 0xffffff, 0.25), alpha);
+    graphics.beginPath();
+    graphics.moveTo(innerPoints[0].x, innerPoints[0].y);
+    for (let i = 1; i < innerPoints.length; i++) {
+      graphics.lineTo(innerPoints[i].x, innerPoints[i].y);
+    }
+    graphics.closePath();
+    graphics.strokePath();
+
+    graphics.lineStyle(2.5, accentColor, active ? 0.28 : 0.1);
+    graphics.beginPath();
+    [0, 2, 4].forEach((index) => {
+      const nextIndex = (index + 1) % outerPoints.length;
+      graphics.moveTo(outerPoints[index].x, outerPoints[index].y);
+      graphics.lineTo(outerPoints[nextIndex].x, outerPoints[nextIndex].y);
+    });
+    graphics.strokePath();
+  }
+
   private tileNoise(tile: HexTile, salt: number): number {
     const seed = (
       tile.coords.q * 73856093
@@ -672,6 +704,25 @@ export class GameScene extends Phaser.Scene {
       100,
       Math.round(amount * 100)
     ).color;
+  }
+
+  private terrainAccentColor(terrain: HexTile["terrain"], baseColor: number): number {
+    switch (terrain) {
+      case "lake":
+        return 0x93c5fd;
+      case "river":
+        return 0x67e8f9;
+      case "mountain":
+        return 0xf8fafc;
+      case "desert":
+        return 0xfde68a;
+      case "plains":
+        return 0x99f6e4;
+      case "forest":
+        return 0x86efac;
+      default:
+        return this.mixColor(baseColor, 0xffffff, 0.3);
+    }
   }
 
   private heroClassColor(classId: string): number {

@@ -5,8 +5,10 @@ import {
   applyPresenceJoinPayload,
   applyPresenceLeavePayload,
   applyStateSyncPayload,
+  checkHostActionRateLimit,
   createStateSyncEnvelope,
   findReconnectablePlayer,
+  getHostActionRateLimitKey,
   getActiveSessionSummary,
   getJoinSessionError,
   resolvePersistedStateSnapshot,
@@ -17,6 +19,8 @@ import {
   validateHostGameAction,
   validateStateSyncPayload,
   type GameAction,
+  type HostActionRateLimitBucket,
+  type HostActionRateLimitResult,
   type ReconnectSessionSnapshot,
 } from './RealtimeService';
 import { store } from '../store/store';
@@ -110,6 +114,7 @@ const createHostContext = (
   const dispatched: unknown[] = [];
   const audited: GameAction[] = [];
   const rejected: Array<{ action: GameAction; reason: string }> = [];
+  const rateLimited: Array<{ action: GameAction; limit: Extract<HostActionRateLimitResult, { allowed: false }> }> = [];
   const effects = {
     broadcasts: 0,
     playerCountUpdates: 0,
@@ -121,9 +126,11 @@ const createHostContext = (
     dispatched,
     audited,
     rejected,
+    rateLimited,
     effects,
     context: {
       isHost,
+      hostPlayerId: 'player_a',
       gameState,
       tiles: worldState.tiles,
       activeTiles: worldState.activeTiles,
@@ -145,8 +152,15 @@ const createHostContext = (
       queueTurnActionAudit: (action: GameAction) => {
         audited.push(action);
       },
+      rateLimitAction: undefined as ((action: GameAction) => HostActionRateLimitResult) | undefined,
       recordRejectedAction: (action: GameAction, reason: string) => {
         rejected.push({ action, reason });
+      },
+      recordRateLimitedAction: (
+        action: GameAction,
+        limit: Extract<HostActionRateLimitResult, { allowed: false }>
+      ) => {
+        rateLimited.push({ action, limit });
       },
     },
   };
@@ -226,12 +240,12 @@ describe('host realtime action processing', () => {
   it('starts and stops host loops for game lifecycle actions', () => {
     const harness = createHostContext(true, createStartableLobbyState());
 
-    applyHostGameAction({ type: 'start' }, harness.context);
+    applyHostGameAction({ type: 'start', playerId: 'player_a' }, harness.context);
     harness.context.gameState = {
       ...harness.context.gameState,
       gameMode: 'playing',
     };
-    applyHostGameAction({ type: 'endGame' }, harness.context);
+    applyHostGameAction({ type: 'endGame', playerId: 'player_a' }, harness.context);
 
     expect(harness.dispatched.map(getActionType)).toEqual([
       'game/startGame',
@@ -241,6 +255,131 @@ describe('host realtime action processing', () => {
     expect(harness.effects.hostLoopStarts).toBe(1);
     expect(harness.effects.hostLoopStops).toBe(1);
     expect(harness.audited.map(action => action.type)).toEqual(['start', 'endGame']);
+  });
+
+  it('rejects host-control actions from non-host actors', () => {
+    const harness = createHostContext(true, createStartableLobbyState());
+
+    const handled = applyHostGameAction({
+      type: 'start',
+      playerId: 'player_b',
+    }, harness.context);
+
+    expect(handled).toBe(false);
+    expect(harness.dispatched).toEqual([]);
+    expect(harness.effects.broadcasts).toBe(0);
+    expect(harness.audited).toEqual([]);
+    expect(harness.rejected).toHaveLength(1);
+    expect(harness.rejected[0].reason).toBe('Only the host can perform this action');
+  });
+
+  it('rate-limits host-routed actions before dispatch, sync, or audit effects', () => {
+    const buckets = new Map<string, HostActionRateLimitBucket>();
+    const gameState = createPlayingGameState();
+    const harness = createHostContext(true, gameState, {
+      tiles: testTiles,
+      activeTiles: ['0,0,0', '1,-1,0'],
+    });
+    const action: GameAction = {
+      type: 'move',
+      playerId: 'player_a',
+      target: { q: 1, r: -1, s: 0 },
+    };
+    harness.context.rateLimitAction = limitedAction => checkHostActionRateLimit(
+      buckets,
+      limitedAction,
+      1000,
+      1,
+      5000
+    );
+
+    expect(applyHostGameAction(action, harness.context)).toBe(true);
+    expect(applyHostGameAction(action, harness.context)).toBe(false);
+
+    expect(harness.dispatched.map(getActionType)).toEqual(['game/movePlayer']);
+    expect(harness.effects.broadcasts).toBe(1);
+    expect(harness.audited).toEqual([action]);
+    expect(harness.rateLimited).toHaveLength(1);
+    expect(harness.rateLimited[0].limit).toMatchObject({
+      key: 'player:player_a',
+      scope: 'actor',
+      count: 1,
+      maxActions: 1,
+      windowMs: 5000,
+      retryAfterMs: 5000,
+    });
+  });
+
+  it('rate-limits session-wide action floods even when actor IDs differ', () => {
+    const buckets = new Map<string, HostActionRateLimitBucket>();
+    const harness = createHostContext();
+    harness.context.rateLimitAction = limitedAction => checkHostActionRateLimit(
+      buckets,
+      limitedAction,
+      1000,
+      10,
+      5000,
+      2
+    );
+
+    expect(applyHostGameAction({
+      type: 'join',
+      playerName: 'Ava',
+      playerId: 'player_a',
+    }, harness.context)).toBe(true);
+    expect(applyHostGameAction({
+      type: 'join',
+      playerName: 'Ben',
+      playerId: 'player_b',
+    }, harness.context)).toBe(true);
+    expect(applyHostGameAction({
+      type: 'join',
+      playerName: 'Cara',
+      playerId: 'player_c',
+    }, harness.context)).toBe(false);
+
+    expect(harness.dispatched.map(getActionType)).toEqual([
+      'game/joinGame',
+      'game/joinGame',
+    ]);
+    expect(harness.audited.map(action => action.type)).toEqual(['join', 'join']);
+    expect(harness.rateLimited).toHaveLength(1);
+    expect(harness.rateLimited[0].limit).toMatchObject({
+      key: 'session:all',
+      scope: 'session',
+      count: 2,
+      maxActions: 2,
+      windowMs: 5000,
+      retryAfterMs: 5000,
+    });
+  });
+
+  it('tracks host action rate limits by actor and resets after the window', () => {
+    const buckets = new Map<string, HostActionRateLimitBucket>();
+    const action: GameAction = {
+      type: 'ready',
+      playerId: 'player_a',
+    };
+
+    expect(getHostActionRateLimitKey(action)).toBe('player:player_a');
+    expect(checkHostActionRateLimit(buckets, action, 1000, 2, 5000)).toMatchObject({
+      allowed: true,
+      key: 'player:player_a',
+      scope: 'actor',
+      count: 1,
+    });
+    expect(checkHostActionRateLimit(buckets, action, 1200, 2, 5000)).toMatchObject({
+      allowed: true,
+      count: 2,
+    });
+    expect(checkHostActionRateLimit(buckets, action, 1300, 2, 5000)).toMatchObject({
+      allowed: false,
+      retryAfterMs: 4700,
+    });
+    expect(checkHostActionRateLimit(buckets, action, 6000, 2, 5000)).toMatchObject({
+      allowed: true,
+      count: 1,
+    });
   });
 
   it('rejects invalid host actions before dispatch, sync, or audit effects', () => {
@@ -326,12 +465,14 @@ describe('host realtime action processing', () => {
       state.game,
       state.world,
       7,
+      'session_a',
       '2026-06-09T12:00:00.000Z'
     );
 
     expect(envelope).toMatchObject({
       gameState: state.game,
       worldState: state.world,
+      sessionId: 'session_a',
       sequence: 7,
       sentAt: '2026-06-09T12:00:00.000Z',
     });
@@ -346,8 +487,8 @@ describe('host realtime action processing', () => {
     const appliedSequences: number[] = [];
     const rejectedReasons: string[] = [];
     const state = store.getState();
-    const freshPayload = createStateSyncEnvelope(state.game, state.world, 4);
-    const stalePayload = createStateSyncEnvelope(state.game, state.world, 3);
+    const freshPayload = createStateSyncEnvelope(state.game, state.world, 4, 'session_a');
+    const stalePayload = createStateSyncEnvelope(state.game, state.world, 3, 'session_a');
 
     expect(applyStateSyncPayload(
       freshPayload,
@@ -355,7 +496,8 @@ describe('host realtime action processing', () => {
       action => dispatches.push(action),
       reason => rejectedReasons.push(reason),
       3,
-      sequence => appliedSequences.push(sequence)
+      sequence => appliedSequences.push(sequence),
+      'session_a'
     )).toBe(true);
 
     expect(applyStateSyncPayload(
@@ -364,7 +506,8 @@ describe('host realtime action processing', () => {
       action => dispatches.push(action),
       reason => rejectedReasons.push(reason),
       4,
-      sequence => appliedSequences.push(sequence)
+      sequence => appliedSequences.push(sequence),
+      'session_a'
     )).toBe(false);
 
     expect(dispatches.map(getActionType)).toEqual([
@@ -373,6 +516,48 @@ describe('host realtime action processing', () => {
     ]);
     expect(appliedSequences).toEqual([4]);
     expect(rejectedReasons).toEqual(['State sync sequence 3 is not newer than 4']);
+  });
+
+  it('rejects sequenced state sync envelopes from another session', () => {
+    const dispatches: unknown[] = [];
+    const rejectedReasons: string[] = [];
+    const state = store.getState();
+    const payload = createStateSyncEnvelope(state.game, state.world, 1, 'session_b');
+
+    expect(applyStateSyncPayload(
+      payload,
+      false,
+      action => dispatches.push(action),
+      reason => rejectedReasons.push(reason),
+      null,
+      undefined,
+      'session_a'
+    )).toBe(false);
+
+    expect(dispatches).toEqual([]);
+    expect(rejectedReasons).toEqual(['State sync session session_b does not match session_a']);
+  });
+
+  it('rejects malformed sequenced state sync envelopes before dispatching', () => {
+    const dispatches: unknown[] = [];
+    const rejectedReasons: string[] = [];
+    const state = store.getState();
+
+    expect(applyStateSyncPayload(
+      {
+        gameState: state.game,
+        worldState: state.world,
+        sequence: 1,
+        sentAt: '2026-06-09T12:00:00.000Z',
+        stateHash: 'hash-without-session',
+      },
+      false,
+      action => dispatches.push(action),
+      reason => rejectedReasons.push(reason)
+    )).toBe(false);
+
+    expect(dispatches).toEqual([]);
+    expect(rejectedReasons).toEqual(['State sync envelope is malformed']);
   });
 
   it('keeps legacy unsequenced state sync payloads compatible', () => {
@@ -445,21 +630,23 @@ describe('host realtime action processing', () => {
     let starts = 0;
 
     const promoted = applyHostMigrationPayload(
-      { newHostId: 'player_a' },
+      { sessionId: 'session_a', newHostId: 'player_a' },
       action => dispatches.push(action),
       () => {
         starts += 1;
       },
-      () => true
+      () => true,
+      'session_a'
     );
 
     const notPromoted = applyHostMigrationPayload(
-      { newHostId: 'player_b' },
+      { sessionId: 'session_a', newHostId: 'player_b' },
       action => dispatches.push(action),
       () => {
         starts += 1;
       },
-      () => false
+      () => false,
+      'session_a'
     );
 
     expect(promoted).toBe(true);
@@ -469,6 +656,23 @@ describe('host realtime action processing', () => {
       'session/promoteToHost',
       'session/promoteToHost',
     ]);
+  });
+
+  it('rejects host migration broadcasts from another session', () => {
+    const dispatches: unknown[] = [];
+    const rejectedReasons: string[] = [];
+
+    expect(applyHostMigrationPayload(
+      { sessionId: 'session_b', newHostId: 'player_a' },
+      action => dispatches.push(action),
+      () => undefined,
+      () => true,
+      'session_a',
+      reason => rejectedReasons.push(reason)
+    )).toBe(false);
+
+    expect(dispatches).toEqual([]);
+    expect(rejectedReasons).toEqual(['Host migration session session_b does not match session_a']);
   });
 
   it('applies presence joins and leaves through the channel lifecycle adapters', () => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectCanvasHasRichRendering } from './canvasQuality';
 
 test('starts a local game and renders the hex canvas', async ({ page }) => {
   const consoleFailures: string[] = [];
@@ -40,5 +41,6 @@ test('starts a local game and renders the hex canvas', async ({ page }) => {
 
   const renderedCanvas = await canvas.screenshot();
   expect(renderedCanvas.length).toBeGreaterThan(10_000);
+  await expectCanvasHasRichRendering(page);
   expect(consoleFailures.filter(error => !error.includes('favicon'))).toEqual([]);
 });

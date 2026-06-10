@@ -1,6 +1,6 @@
 # Implementation Status & Bug Fix Plan
 
-**Last updated:** 2026-06-10 — hero/combat UI, multiplayer action routing/auditing, host action/state-sync validation, persisted-state restore/status validation, ordered/deduplicated state-sync delivery, throttled state-sync payload budget diagnostics, disconnect grace-window handling, optional session authority gateway, Supabase runtime guard, realtime diagnostics export and sink, Supabase data-integrity hardening, enhanced material-rich hex/hero board visuals, canvas error recovery, focused domain/realtime/session/E2E tests, optional live Supabase E2E and long-soak harnesses, CI quality gates, production readiness runbook, 30-player load and sustained browser-runtime profiling, reconnect identity hardening, persistence hash coverage, production chunk splitting, Vite 8 migration, and clean dependency audit.
+**Last updated:** 2026-06-10 — hero/combat UI, multiplayer action routing/auditing, local action ownership checks, host action/state-sync validation, host-control authorization, actor/session action-rate limiting, persisted-state restore/status validation, session-scoped ordered/deduplicated state-sync and host-migration delivery, throttled state-sync payload budget diagnostics, disconnect grace-window handling, optional session authority gateway, Supabase runtime guard, realtime diagnostics export and sink, Supabase data-integrity hardening, enhanced material-rich hex/hero board visuals, canvas error recovery, focused domain/realtime/session/E2E tests with canvas pixel-richness assertions, manual live Supabase CI E2E gate, locally verified long-soak profile, scheduled/manual long-soak CI gate, Supabase Edge Function CI typecheck, production readiness runbook, 30-player load and sustained browser-runtime profiling, reconnect identity hardening, persistence hash coverage, production chunk splitting, Vite 8 migration, and clean dependency audit.
 
 ## Overview
 
@@ -16,6 +16,7 @@ Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs
 - Added combat result feedback overlay and activity-log support for hero/combat events.
 - Routed online-mode movement, harvesting, crafting, item use, trading, hero, army, spell, and combat actions through the host-authoritative realtime service.
 - Fixed multiplayer player identity drift by allowing `joinGame` to accept the client/host player ID.
+- Added local action ownership checks so a client refuses to emit player-owned realtime actions for a different local player ID before broadcast or host-local dispatch.
 - Hardened persistence hashing so host auto-save sees full game/world-state changes, not only phase/count changes.
 - Guarded Supabase auth/realtime startup so missing env vars no longer blank-screen local play.
 - Added non-blocking host-routed action audit logging to `game_turn_history`.
@@ -23,12 +24,15 @@ Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs
 - Added realtime diagnostics export via browser `hex:realtime-diagnostic` events and optional `VITE_REALTIME_DIAGNOSTICS_ENDPOINT` POST requests.
 - Added a Supabase `realtime_diagnostics` table migration and `realtime-diagnostics` Edge Function reference sink for the optional diagnostics endpoint.
 - Added host-side realtime action validation before dispatch/state sync/audit, covering lobby joins/readiness/start, movement, harvesting, crafting, item use, trades, heroes, skills, spells, units, combat, phase control, and negative-resource trade rejection.
+- Added host-control authorization for start, force-next-phase, and end-game actions. These realtime actions now carry the actor player ID and are rejected unless the actor is the current host.
+- Added per-actor and per-session host action-rate limiting before validation dispatch, state sync, or audit logging. Rejected floods emit `action_rate_limited` diagnostics and are tunable with `VITE_HOST_ACTION_RATE_LIMIT_MAX_ACTIONS`, `VITE_HOST_ACTION_RATE_LIMIT_SESSION_MAX_ACTIONS`, and `VITE_HOST_ACTION_RATE_LIMIT_WINDOW_MS`.
 - Added client-side state-sync validation before applying host snapshots, covering malformed game mode/phase/player/team/stat/hero data, invalid world tiles, terrain keys, coordinate-key mismatches, and active-tile references. Rejected snapshots emit an `invalid_state_sync` realtime diagnostic.
 - Added persisted-state restore validation for in-progress joins and reconnects so corrupt Supabase `game_state`/`world_state` snapshots are rejected before Redux sync.
 - Added persisted-state validity to active-session summaries and the reconnect UI so invalid saved state is shown before reconnect is attempted.
-- Added sequenced host state-sync envelopes with state hashes and timestamps. Clients reject stale/out-of-order sequenced snapshots while preserving compatibility with legacy unsequenced payloads.
+- Added session-scoped sequenced host state-sync envelopes with state hashes and timestamps. Clients reject malformed, wrong-session, and stale/out-of-order sequenced snapshots while preserving compatibility with legacy unsequenced payloads.
 - Added exact-match state-sync broadcast deduplication so redundant host sync requests do not resend unchanged game/world snapshots after a successful broadcast.
 - Added state-sync payload byte measurement and throttled `state_sync_payload_large` warnings when snapshots exceed the configurable `VITE_STATE_SYNC_WARN_BYTES` budget.
+- Added session-scoped host-migration payload validation so clients reject migration broadcasts that do not match the active session before promotion.
 - Added a realtime presence disconnect grace window. Presence leaves now mark players disconnected immediately, but game removal and host migration are delayed until the player remains absent after the configurable timeout; rejoins cancel the pending finalization.
 - Added an optional Supabase `session-authority` Edge Function and `VITE_SESSION_AUTHORITY_ENDPOINT` client path so production host session creation, persistence saves, player-count updates, turn-audit writes, host claims, and session-end writes can be owned by a service-role gateway using hashed host authority tokens.
 - Added a Supabase authority-gateway migration that stores host token hashes and blocks direct anonymous updates/turn-history writes for gateway-created sessions while preserving local direct-write fallback for sessions without authority tokens.
@@ -36,21 +40,22 @@ Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs
 - Upgraded Phaser hex graphics with darker board background, stronger grid contrast, gradient terrain fills, terrain vector details, inactive-tile hatching, team-coloured player badges, and hero markers.
 - Enhanced board readability with under-tile shadows, wider hover/selection halos, class-coloured hero badges, and hero HP rings on map markers.
 - Added a material-rich hex surface pass with beveled top-down rims, deterministic tile grain, lake glints, river banks/highlights, mountain ridge lines, desert texture, plains grass tufts, and denser forest canopy detail while staying inside the existing dirty-tile graphics lifecycle.
+- Added optimized terrain contour rings and terrain-coloured edge accents to the Phaser hex renderer, keeping the richer board surface within the existing 30-player browser frame thresholds.
 - Added a lazy-canvas loading fallback and error boundary with retry so Phaser/chunk failures no longer leave the play surface blank.
 - Removed legacy building guide/data files in line with the hero/army/combat direction.
 - Added Vitest with focused tests for combat power/resolution, multiplayer-supplied player IDs, hero recruitment, skill learning, spell casting, unit recruitment, rest, and combat report creation.
 - Added persistence hash coverage proving both game-state and world-state changes are included in host auto-save deduplication.
-- Added pure multiplayer action-creator contracts so movement, trading, hero, spell, combat, and host-control payloads are covered independently of a live realtime backend.
-- Extracted and tested host-authoritative realtime action processing so local contract tests now cover non-host ignore behaviour, host join/move/start/end effects, invalid action rejection, negative trade-resource rejection, state-sync triggers and malformed-sync rejection, player-count update triggers, and audit queuing without a live Supabase project.
+- Added pure multiplayer action-creator and local action ownership contracts so movement, trading, hero, spell, combat, and host-control payloads are covered independently of a live realtime backend.
+- Extracted and tested host-authoritative realtime action processing so local contract tests now cover non-host ignore behaviour, host join/move/start/end effects, invalid action rejection, negative trade-resource rejection, state-sync triggers, malformed/wrong-session sync rejection, player-count update triggers, and audit queuing without a live Supabase project.
 - Extracted and tested mocked realtime channel lifecycle adapters for state sync, host migration, presence join/leave, deferred disconnect handling callbacks, rejoin cancellation checks, and deterministic next-host selection.
 - Extracted and tested session/reconnect persistence contracts for join rejection reasons, active-session summaries, persisted reconnect restoration, no-state sessions, ended sessions, query failures, and missing-player reconnects.
 - Fixed reconnect player resolution to prefer durable player IDs before falling back to display-name matching.
 - Added a 30-player reducer regression that fills the full player cap, verifies unique IDs/numbers, checks balanced configured team allocation, and starts the game from the full roster.
-- Added Playwright browser-runtime profiling for a 30-player local game, including full roster creation through the UI, startup timing, startup frame-sampling thresholds, sustained post-start frame sampling, optional heap sanity checks, canvas screenshot capture, and console-error checks.
-- Added Playwright E2E smoke coverage for the local-game path, including lobby start, running HUD visibility, Hero Command control presence, Phaser canvas mount, canvas sizing, and rendered canvas screenshot capture.
-- Added stable online lobby test selectors and a gated live Supabase Playwright smoke for create, join, ready, start, persisted-state check, reconnect restoration, canvas visibility, and best-effort test-session cleanup. It runs only when `LIVE_SUPABASE_E2E=1` and Supabase test-project env vars are present.
+- Added Playwright browser-runtime profiling for a 30-player local game, including full roster creation through the UI, startup timing, startup frame-sampling thresholds, sustained post-start frame sampling, optional heap sanity checks, canvas screenshot capture, PNG pixel-richness assertions, and console-error checks.
+- Added Playwright E2E smoke coverage for the local-game path, including lobby start, running HUD visibility, Hero Command control presence, Phaser canvas mount, canvas sizing, rendered canvas screenshot capture, and PNG pixel-richness assertions for material-rich board detail.
+- Added stable online lobby test selectors and a gated live Supabase Playwright smoke for create, join, ready, start, persisted-state check, reconnect restoration, canvas visibility, canvas PNG pixel-richness assertions, and best-effort test-session cleanup. It runs only when `LIVE_SUPABASE_E2E=1` and Supabase test-project env vars are present.
 - Added an opt-in 30-player long-soak Playwright profile gated by `SOAK_E2E=1` and configurable with `SOAK_E2E_DURATION_MS`.
-- Added `.github/workflows/ci.yml` to run install, typecheck/lint/unit, production build, audit, and default Playwright browser E2E on pull requests and pushes to `main`/`master`.
+- Added `.github/workflows/ci.yml` to run install, typecheck/lint/unit, production build, Supabase Edge Function typecheck via `npm run check:edge`, audit, and default Playwright browser E2E on pull requests and pushes to `main`/`master`, plus a scheduled/manual 30-player long-soak browser profile and a manual live Supabase online smoke that uses repository secrets.
 - Added `ProductionReadiness.md` covering release gates, live Supabase E2E setup, Supabase/RLS checklist, environment configuration, diagnostics export options, dependency maintenance policy, and remaining deployment decisions.
 - Split production chunks so the lobby shell no longer eagerly loads Phaser. `GameCanvas` is lazy-loaded, vendor/supabase/react/icon chunks are separated, and the isolated Phaser engine chunk has an explicit warning budget.
 - Refreshed Browserslist/caniuse-lite data; build output no longer emits the outdated Browserslist warning.
@@ -61,17 +66,20 @@ Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs
 
 ### Verification
 
-- `npm run check` -- pass (`typecheck`, `lint:check`, and `vitest run`; 5 test files / 44 tests).
+- `npm run check` -- pass (`typecheck`, `lint:check`, and `vitest run`; 5 test files / 53 tests).
 - `npm run build` -- pass; output is chunked into `index`, `GameCanvas`, `phaser`, `react-vendor`, `supabase`, `icons`, and `vendor`.
-- `npm run test:e2e` -- pass (Playwright Chromium; 2 local-game smoke/profile tests passed, 1 live Supabase online test skipped because `LIVE_SUPABASE_E2E` and Supabase env vars are not configured locally, and 1 long-soak test skipped because `SOAK_E2E` is not enabled). Local coverage includes a two-player canvas smoke and a 30-player UI-driven local game profile with startup timing, sustained frame sampling, optional heap sanity checks, and canvas capture.
+- `npm run check:edge` -- pass; Deno typecheck for `realtime-diagnostics` and `session-authority` through the npm Deno shim.
+- `npm run test:e2e` -- pass (Playwright Chromium; 2 local-game smoke/profile tests passed, 1 live Supabase online test skipped because `LIVE_SUPABASE_E2E` and Supabase env vars are not configured locally, and 1 long-soak test skipped because `SOAK_E2E` is not enabled). Local coverage includes a two-player canvas smoke and a 30-player UI-driven local game profile with startup timing, sustained frame sampling, optional heap sanity checks, canvas capture, and PNG pixel-richness checks for rendered board colour/detail/contrast.
+- `SOAK_E2E=1 SOAK_E2E_DURATION_MS=60000 npm run test:e2e` -- pass (Playwright Chromium; 3 tests passed, 1 live Supabase online test skipped because live Supabase env vars are not configured). The opt-in 30-player long-soak browser profile completed its sustained 60-second run with frame sampling, optional heap checks, and console-error checks.
 - `npm audit --omit=dev --audit-level=moderate` -- pass; 0 production vulnerabilities.
 - `npm audit --audit-level=moderate` -- pass; 0 vulnerabilities.
-- Browser smoke found and drove fixes for missing Supabase env blank-screening and unsupported Phaser `quadraticCurveTo` calls. Playwright now provides the repeatable screenshot/canvas check that the in-app browser screenshot/CDP path could not reliably complete.
+- Browser smoke found and drove fixes for missing Supabase env blank-screening and unsupported Phaser `quadraticCurveTo` calls. Playwright now provides repeatable screenshot/canvas checks plus PNG byte-level colour/detail/contrast assertions that the in-app browser screenshot/CDP path could not reliably complete.
 
 ### Remaining hardening
 
 - Run the gated live online E2E harness against a Supabase test project in CI or a configured local test environment, then record the live create/join/reconnect and persisted-state restoration result.
-- Run the opt-in long-soak profile in CI or a configured local profile window and tune the release threshold/cadence.
+- Configure `SUPABASE_E2E_URL` and `SUPABASE_E2E_ANON_KEY` repository secrets before using the manual live Supabase workflow gate.
+- Review scheduled/manual long-soak CI results and tune the release threshold/cadence.
 - Deploy and validate the optional `session-authority` gateway against a Supabase test project, then decide whether gameplay actions also need to move to a fully server-authoritative simulation layer.
 - Decide whether the included realtime diagnostics Edge Function is the final sink or a forwarding layer to another monitoring platform.
 
