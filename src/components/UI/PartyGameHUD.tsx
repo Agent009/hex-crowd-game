@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import {
@@ -19,6 +19,7 @@ import { NotificationSystem } from './NotificationSystem';
 import { HexActionMenu } from './HexActionMenu';
 import { HeroCommandPanel } from './HeroCommandPanel';
 import { CombatResultModal } from './CombatResultModal';
+import { useGameKeyboard } from '../../hooks/useGameKeyboard';
 import {
   Users,
   Trophy,
@@ -98,9 +99,12 @@ export const PartyGameHUD: React.FC = () => {
     }
   };
 
-  const togglePause = () => {
-    setIsGamePaused(!isGamePaused);
-  };
+  const togglePause = useCallback(() => {
+    setIsGamePaused(prev => !prev);
+  }, []);
+
+  // Global in-game keyboard shortcuts (player switch, WASD cursor, pause, skip phase).
+  useGameKeyboard({ onTogglePause: togglePause });
 
   const handlePlayerSelect = (playerId: string) => {
     dispatch(setCurrentPlayer({ playerId }));

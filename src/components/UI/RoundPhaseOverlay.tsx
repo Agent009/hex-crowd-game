@@ -16,7 +16,9 @@ import {
   MapPin,
   Package,
   Hammer,
-  Heart
+  Heart,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 interface PhaseData {
@@ -103,6 +105,7 @@ export const RoundPhaseOverlay: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
   const [overlayTimer, setOverlayTimer] = useState(0);
   const [timerPhase, setTimerPhase] = useState<GamePhase | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const phaseData = phaseDefinitions[currentPhase];
   const canDismiss = dismissiblePhases.includes(currentPhase);
@@ -155,6 +158,10 @@ export const RoundPhaseOverlay: React.FC = () => {
 
   useEffect(() => {
     if (!showPhaseOverlay || !isVisible) return;
+    // Only the round_start modal auto-dismisses. Every other phase renders a
+    // non-blocking dock that stays put until the phase ends or the player
+    // dismisses it, so skip the auto-dismiss countdown for those.
+    if (currentPhase !== 'round_start') return;
 
     const interval = setInterval(() => {
       setOverlayTimer(prev => {
@@ -300,6 +307,143 @@ export const RoundPhaseOverlay: React.FC = () => {
 
   const Icon = phaseData.icon;
 
+  const renderProgressDots = () => (
+    <div className="flex justify-center space-x-2">
+      {phaseOrder.map((phase, index) => {
+        const phaseIndex = phaseOrder.indexOf(currentPhase);
+        const isCurrentPhase = index === phaseIndex;
+        const isPastPhase = index < phaseIndex;
+
+        return (
+          <div
+            key={phase}
+            className={`w-3 h-3 rounded-full transition-all duration-300 ${
+              isCurrentPhase
+                ? `${phaseData.color.replace('text-', 'bg-')} ring-2 ring-white ring-opacity-50`
+                : isPastPhase
+                  ? 'bg-green-500'
+                  : 'bg-gray-600'
+            }`}
+            title={phaseDefinitions[phase].name}
+          />
+        );
+      })}
+    </div>
+  );
+
+  // Every phase except round_start renders as a slim, non-blocking dock pinned
+  // to the bottom of the screen, so the player can read phase info (and, during
+  // interactive phases, keep playing). The outer wrapper is pointer-events-none
+  // so clicks pass through to the board; only the dock itself captures pointer
+  // events. The dock can be expanded to reveal the full phase detail.
+  if (currentPhase !== 'round_start') {
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 pointer-events-none">
+        <div
+          className={`${phaseData.bgColor} bg-opacity-80 backdrop-blur-md rounded-xl border border-white border-opacity-20 shadow-2xl pointer-events-auto w-full max-w-2xl slide-in-from-bottom`}
+          role="status"
+          aria-live="polite"
+        >
+          {/* Compact row (always visible) */}
+          <div className="flex items-center gap-4 p-3">
+            {/* Icon */}
+            <div className={`${phaseData.bgColor} bg-opacity-60 rounded-lg p-2 flex-shrink-0`}>
+              <Icon className={`w-6 h-6 ${phaseData.color}`} />
+            </div>
+
+            {/* Phase text + progress */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-base font-bold text-white truncate">{phaseData.name}</h2>
+                <span className="text-xs text-gray-300 flex-shrink-0">Round {roundNumber}</span>
+              </div>
+              <p className="text-xs text-gray-200 truncate">{phaseData.description}</p>
+              <div className="mt-1.5 w-full bg-gray-700 bg-opacity-50 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${phaseData.barColor}`}
+                  style={{ width: `${phaseProgress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Timer */}
+            <div className="text-center flex-shrink-0">
+              <div className="flex items-center gap-1 text-white">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="font-mono text-sm font-semibold">{formatTime(phaseTimer)}</span>
+              </div>
+              <div className="text-[10px] text-gray-300">remaining</div>
+            </div>
+
+            {/* Expand / collapse */}
+            <button
+              onClick={() => setExpanded(prev => !prev)}
+              aria-label={expanded ? 'Collapse phase details' : 'Expand phase details'}
+              aria-expanded={expanded}
+              title={expanded ? 'Show less' : 'Show more'}
+              className="flex-shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white hover:bg-opacity-10 transition-colors"
+            >
+              {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+
+            {/* Dismiss */}
+            {canDismiss && (
+              <button
+                onClick={handleDismiss}
+                aria-label="Dismiss phase banner"
+                title="Dismiss (ESC)"
+                className="flex-shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white hover:bg-opacity-10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Expanded detail */}
+          {expanded && (
+            <div className="border-t border-white border-opacity-10 px-4 py-3 max-h-72 overflow-y-auto space-y-4">
+              {/* Phase-specific information */}
+              <div>{getPhaseSpecificInfo()}</div>
+
+              {/* Phase events */}
+              {phaseEvents.length > 0 && (
+                <div>
+                  <div className="text-center text-xs text-gray-300 mb-2">Phase Events</div>
+                  <div className="bg-black bg-opacity-30 rounded-lg p-3 space-y-2">
+                    {phaseEvents.slice(0, 8).map(event => {
+                      const EventIcon = getEventIcon(event.type);
+                      return (
+                        <div key={event.id} className="flex items-start space-x-2 text-xs">
+                          <EventIcon className="w-3 h-3 mt-0.5 text-gray-300 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white">{event.message}</div>
+                            {event.playerName && (
+                              <div className="text-gray-400">Player: {event.playerName}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Phase progress indicator */}
+              <div>
+                <div className="text-center text-xs text-gray-300 mb-2">Phase Progress</div>
+                {renderProgressDots()}
+              </div>
+
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">Press ESC to dismiss</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in">
       <div className={`${phaseData.bgColor} bg-opacity-90 backdrop-blur-sm rounded-2xl p-8 max-w-md w-full mx-4 border border-opacity-30 border-white shadow-2xl animate-slide-in-from-right`}>
@@ -378,27 +522,7 @@ export const RoundPhaseOverlay: React.FC = () => {
         {/* Phase Progress Indicator */}
         <div className="mb-6">
           <div className="text-center text-sm text-gray-300 mb-2">Phase Progress</div>
-          <div className="flex justify-center space-x-2">
-            {phaseOrder.map((phase, index) => {
-              const phaseIndex = phaseOrder.indexOf(currentPhase);
-              const isCurrentPhase = index === phaseIndex;
-              const isPastPhase = index < phaseIndex;
-
-              return (
-                <div
-                  key={phase}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    isCurrentPhase 
-                      ? `${phaseData.color.replace('text-', 'bg-')} ring-2 ring-white ring-opacity-50` 
-                      : isPastPhase 
-                        ? 'bg-green-500' 
-                        : 'bg-gray-600'
-                  }`}
-                  title={phaseDefinitions[phase].name}
-                />
-              );
-            })}
-          </div>
+          {renderProgressDots()}
         </div>
 
         {/* Action Buttons */}

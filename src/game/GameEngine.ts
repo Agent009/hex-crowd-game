@@ -1043,6 +1043,26 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.centerOn(pixel.x, pixel.y);
   }
 
+  /**
+   * Keep a tile comfortably on-screen for keyboard navigation: only pan the
+   * camera when the tile drifts into the outer margin of the viewport, so the
+   * board doesn't jump on every cursor step.
+   */
+  public ensureTileVisible(coords: CubeCoords) {
+    const pixel = cubeToPixel(coords, this.hexSize);
+    const view = this.cameras.main.worldView;
+    const marginX = view.width * 0.18;
+    const marginY = view.height * 0.18;
+    const inside =
+      pixel.x > view.x + marginX &&
+      pixel.x < view.right - marginX &&
+      pixel.y > view.y + marginY &&
+      pixel.y < view.bottom - marginY;
+    if (!inside) {
+      this.cameras.main.centerOn(pixel.x, pixel.y);
+    }
+  }
+
   public setZoom(zoom: number) {
     this.cameras.main.setZoom(zoom);
     this.particleSystem.setZoomLevel(zoom);

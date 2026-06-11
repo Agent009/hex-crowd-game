@@ -12,10 +12,16 @@ import {
   Scroll,
   ChevronDown,
   ChevronUp,
-  Filter,
   X,
   Swords,
-  Crown
+  Crown,
+  Box,
+  Mountain,
+  HeartPulse,
+  Skull,
+  RefreshCw,
+  Sparkles,
+  Coins
 } from 'lucide-react';
 import { ActivityEvent } from "../../store/gameSlice";
 
@@ -92,21 +98,21 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
   };
 
   const eventTypes = [
-    { id: 'movement', label: 'Movement', color: 'text-blue-400' },
-    { id: 'item_usage', label: 'Item Usage', color: 'text-purple-400' },
-    { id: 'crafting', label: 'Crafting', color: 'text-orange-400' },
-    { id: 'harvesting', label: 'Harvesting', color: 'text-green-400' },
-    { id: 'terrain_effect', label: 'Terrain Effects', color: 'text-yellow-400' },
-    { id: 'damage', label: 'Damage', color: 'text-red-400' },
-    { id: 'healing', label: 'Healing', color: 'text-green-400' },
-    { id: 'disaster', label: 'Disasters', color: 'text-red-500' },
-    { id: 'elimination', label: 'Eliminations', color: 'text-red-600' },
-    { id: 'round_start', label: 'Round Events', color: 'text-cyan-400' },
-    { id: 'phase_change', label: 'Phase Changes', color: 'text-blue-400' },
-    { id: 'phase_effect', label: 'Phase Effects', color: 'text-blue-400' },
-    { id: 'trade', label: 'Trades', color: 'text-teal-400' },
-    { id: 'combat', label: 'Combat', color: 'text-red-300' },
-    { id: 'hero', label: 'Heroes', color: 'text-amber-300' }
+    { id: 'movement', label: 'Movement', color: 'text-blue-400', icon: MapPin },
+    { id: 'item_usage', label: 'Item Usage', color: 'text-purple-400', icon: Box },
+    { id: 'crafting', label: 'Crafting', color: 'text-orange-400', icon: Hammer },
+    { id: 'harvesting', label: 'Harvesting', color: 'text-green-400', icon: Package },
+    { id: 'terrain_effect', label: 'Terrain Effects', color: 'text-yellow-400', icon: Mountain },
+    { id: 'damage', label: 'Damage', color: 'text-red-400', icon: Heart },
+    { id: 'healing', label: 'Healing', color: 'text-green-400', icon: HeartPulse },
+    { id: 'disaster', label: 'Disasters', color: 'text-red-500', icon: AlertTriangle },
+    { id: 'elimination', label: 'Eliminations', color: 'text-red-600', icon: Skull },
+    { id: 'round_start', label: 'Round Events', color: 'text-cyan-400', icon: Clock },
+    { id: 'phase_change', label: 'Phase Changes', color: 'text-blue-400', icon: RefreshCw },
+    { id: 'phase_effect', label: 'Phase Effects', color: 'text-blue-400', icon: Sparkles },
+    { id: 'trade', label: 'Trades', color: 'text-teal-400', icon: Coins },
+    { id: 'combat', label: 'Combat', color: 'text-red-300', icon: Swords },
+    { id: 'hero', label: 'Heroes', color: 'text-amber-300', icon: Crown }
   ];
 
   const toggleFilter = (eventType: string) => {
@@ -169,32 +175,38 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center space-x-2">
-          <Filter className="w-3 h-3 text-slate-400" />
-          <div className="flex flex-wrap gap-1">
-            {eventTypes.map(type => (
+        {/* Filters — compact icon toggles; hover for the label */}
+        <div className="flex flex-wrap gap-1">
+          {eventTypes.map(type => {
+            const FilterIcon = type.icon;
+            const active = selectedFilters.has(type.id);
+            return (
               <button
                 key={type.id}
                 onClick={() => toggleFilter(type.id)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  selectedFilters.has(type.id)
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                title={type.label}
+                aria-label={type.label}
+                aria-pressed={active}
+                className={`p-1.5 rounded transition-colors ${
+                  active
+                    ? `bg-slate-600 ring-1 ring-inset ring-slate-400 ${type.color}`
+                    : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'
                 }`}
               >
-                {type.label}
+                <FilterIcon className="w-3.5 h-3.5" />
               </button>
-            ))}
-            {selectedFilters.size > 0 && (
-              <button
-                onClick={() => setSelectedFilters(new Set())}
-                className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+            );
+          })}
+          {selectedFilters.size > 0 && (
+            <button
+              onClick={() => setSelectedFilters(new Set())}
+              title="Clear filters"
+              aria-label="Clear filters"
+              className="p-1.5 rounded text-red-400 hover:bg-red-600 hover:text-white transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

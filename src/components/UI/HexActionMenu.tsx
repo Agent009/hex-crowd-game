@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {useSelector, useDispatch} from 'react-redux';
 import {RootState} from '../../store/store';
 import { movePlayer, initiateCombat } from '../../store/gameSlice';
@@ -36,8 +36,68 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     showPhaseOverlay
   } = useSelector((state: RootState) => state.game);
 
-  // Hide menu when phase overlay is shown
-  if (!selectedTile || showPhaseOverlay) return null;
+  // Hide menu only when the blocking round_start modal is shown. Every other
+  // phase renders a non-blocking bottom dock, so the action menu must stay
+  // available (individual actions are still gated by phase internally).
+  const blockingOverlay = showPhaseOverlay && currentPhase === 'round_start';
+  const menuOpen = !!selectedTile && !blockingOverlay;
+
+  // Keyboard focus within the radial menu. `null` = no item focused yet, so
+  // Enter falls back to the primary (Move) action.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  // Snapshot of the rendered actions so the key handler can run them without
+  // re-binding the listener on every render. Each entry's `run` performs the
+  // action and closes/keeps the menu as appropriate.
+  const actionsRef = useRef<Array<{ id: string; enabled: boolean; run: () => void }>>([]);
+
+  // Reset focus whenever the selected tile changes (new menu instance).
+  useEffect(() => {
+    setFocusedId(null);
+  }, [selectedTile]);
+
+  // Tab / Shift+Tab to cycle items, Enter to confirm, Backspace to cancel.
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+
+      const enabled = actionsRef.current.filter((a) => a.enabled);
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        if (enabled.length === 0) return;
+        const currentIndex = enabled.findIndex((a) => a.id === focusedId);
+        const delta = e.shiftKey ? -1 : 1;
+        const nextIndex = (currentIndex + delta + enabled.length) % enabled.length;
+        setFocusedId(enabled[nextIndex].id);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const focused = focusedId ? enabled.find((a) => a.id === focusedId) : null;
+        // No explicit focus → confirm the primary Move action (fallback: first enabled).
+        const toRun = focused ?? enabled.find((a) => a.id === 'move') ?? enabled[0];
+        toRun?.run();
+        return;
+      }
+
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        dispatch(deselectTile());
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [menuOpen, focusedId, dispatch]);
+
+  if (!menuOpen) return null;
 
   const tileKey = coordsToKey(selectedTile);
   const tile = tiles[tileKey];
@@ -118,15 +178,14 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     }
   };
 
-  const handleAction = (actionFn: () => void, keepMenuActive: boolean = false) => {
-    return (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      actionFn();
-      if (!keepMenuActive) {
-        dispatch(deselectTile());
-      }
-    };
+  // Run an action's effect, then close the menu unless it keeps it active
+  // (panels that open over the board leave the selection in place).
+  const activate = (action: { enabled: boolean; perform: () => void; keepMenuActive?: boolean }) => {
+    if (!action.enabled) return;
+    action.perform();
+    if (!action.keepMenuActive) {
+      dispatch(deselectTile());
+    }
   };
 
   const enableHarvestResource = canHarvest() && (currentPlayerStats?.actionPoints ?? 0) >= 1;
@@ -139,7 +198,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: canMove() ? 'Move Here' : 'Cannot Move Here',
       color: 'bg-blue-600 hover:bg-blue-700',
       enabled: canMove(),
-      onClick: handleAction(handleMove),
+      perform: handleMove,
       angle: -90 // Top
     },
     {
@@ -148,7 +207,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: enableHarvestResource ? 'Harvest Resource (1 AP)' : 'Harvest Resource (need 1 AP)',
       color: 'bg-green-600 hover:bg-green-700',
       enabled: enableHarvestResource,
-      onClick: handleAction(() => onOpenHarvestGrid('resources'), true),
+      perform: () => onOpenHarvestGrid('resources'),
+      keepMenuActive: true,
       angle: -30 // Top right
     },
     {
@@ -157,7 +217,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: enableHarvestItem ? 'Harvest Item (3 AP)' : 'Harvest Item (need 3 AP)',
       color: 'bg-purple-600 hover:bg-purple-700',
       enabled: enableHarvestItem,
-      onClick: handleAction(() => onOpenHarvestGrid('items'), true),
+      perform: () => onOpenHarvestGrid('items'),
+      keepMenuActive: true,
       angle: 30 // Bottom right
     },
     {
@@ -166,7 +227,8 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: canCraft() ? 'Craft Item' : 'Cannot Craft Item',
       color: 'bg-orange-600 hover:bg-orange-700',
       enabled: canCraft(),
-      onClick: handleAction(() => onOpenHarvestGrid('crafting'), true),
+      perform: () => onOpenHarvestGrid('crafting'),
+      keepMenuActive: true,
       angle: 90 // Bottom
     },
     {
@@ -179,7 +241,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
         : 'No enemy here',
       color: 'bg-red-600 hover:bg-red-700',
       enabled: canAttack(),
-      onClick: handleAction(handleAttack),
+      perform: handleAttack,
       angle: 150, // Bottom left
       hidden: !enemyTarget,
     },
@@ -189,10 +251,18 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: 'Tile Info',
       color: 'bg-slate-600 hover:bg-slate-700',
       enabled: true,
-      onClick: handleAction(() => dispatch(toggleTileInfo()), true),
+      perform: () => dispatch(toggleTileInfo()),
+      keepMenuActive: true,
       angle: 210 // Upper left
     }
   ].filter((a) => !('hidden' in a && a.hidden));
+
+  // Expose the current actions to the keyboard handler.
+  actionsRef.current = actions.map((a) => ({
+    id: a.id,
+    enabled: a.enabled,
+    run: () => activate(a),
+  }));
 
   // Calculate screen position more reliably
   const getScreenPosition = () => {
@@ -267,6 +337,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       {actions.map((action) => {
         const position = getActionPosition(action.angle);
         const Icon = action.icon;
+        const isFocused = focusedId === action.id && action.enabled;
 
         return (
           <div
@@ -279,11 +350,17 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
             }}
           >
             <button
-              onMouseDown={action.onClick}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                activate(action);
+              }}
               disabled={!action.enabled}
+              aria-label={action.label}
               className={`
-                w-14 h-14 rounded-full shadow-xl border-2 border-white transition-all duration-200
+                w-14 h-14 rounded-full shadow-xl border-2 transition-all duration-200
                 flex items-center justify-center text-white font-bold
+                ${isFocused ? 'border-yellow-300 ring-4 ring-yellow-300/70 scale-110' : 'border-white'}
                 ${action.enabled
                 ? `${action.color} hover:scale-110 active:scale-95`
                 : 'bg-gray-500 opacity-50 cursor-not-allowed'

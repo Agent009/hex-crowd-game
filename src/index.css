@@ -113,6 +113,17 @@
   }
 }
 
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .slide-in-left {
   animation: slideInLeft 0.3s ease-out;
 }
@@ -127,6 +138,10 @@
 
 .fade-in {
   animation: fadeIn 0.2s ease-out;
+}
+
+.slide-in-from-bottom {
+  animation: slideInFromBottom 0.3s ease-out;
 }
 
 /* Shake animation for disasters */

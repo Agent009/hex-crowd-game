@@ -34,7 +34,10 @@ export const DEFAULT_GRID_SYSTEM: GridSystem = "topDown";
 export const gridSystem: GridSystem = import.meta.env.VITE_GRID_SYSTEM ? import.meta.env.VITE_GRID_SYSTEM as GridSystem : DEFAULT_GRID_SYSTEM;
 export const isTopDownGrid = gridSystem === "topDown";
 export const isIsometricGrid = !isTopDownGrid;
-export const DEFAULT_HEX_SIZE: number = import.meta.env.VITE_HEX_SIZE ? import.meta.env.VITE_HEX_SIZE as number : 32;
+// Env vars are always strings at runtime; `Number()` coerces it so arithmetic
+// like `hexSize + 4` adds instead of string-concatenating (which produced a
+// "324"px halo spanning the whole board).
+export const DEFAULT_HEX_SIZE: number = import.meta.env.VITE_HEX_SIZE ? Number(import.meta.env.VITE_HEX_SIZE) : 32;
 
 // Cube coordinate operations
 export const cubeAdd = (a: CubeCoords, b: CubeCoords): CubeCoords => ({
