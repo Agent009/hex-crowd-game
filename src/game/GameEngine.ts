@@ -39,6 +39,7 @@ export class GameScene extends Phaser.Scene {
   private gameData: { [key: string]: HexTile } = {};
   private previousGameData: { [key: string]: HexTile } = {};
   private heroes: Hero[] = [];
+  private playerLastCoords: Map<string, CubeCoords> = new Map();
   private selectedTile: CubeCoords | null = null;
   private onTileClick?: (coords: CubeCoords) => void;
   private onTileHover?: (coords: CubeCoords | null) => void;
@@ -251,6 +252,14 @@ export class GameScene extends Phaser.Scene {
         const markerKey = `${key}_${player.id}`;
         const teamColor = Phaser.Display.Color.HexStringToColor(player.color).color;
 
+        // Track movement so the token can glide from its previous tile.
+        const prevCoords = this.playerLastCoords.get(player.id);
+        const movedFrom = prevCoords && !coordsEqual(prevCoords, tile.coords)
+          ? cubeToPixel(prevCoords, this.hexSize)
+          : null;
+        this.playerLastCoords.set(player.id, tile.coords);
+        const movedObjects: Phaser.GameObjects.GameObject[] = [];
+
         const marker = this.add.graphics();
         marker.fillStyle(0x0f172a, 0.92);
         marker.fillCircle(pixel.x + offsetX, pixel.y + offsetY, 11);
@@ -260,6 +269,7 @@ export class GameScene extends Phaser.Scene {
         marker.strokeCircle(pixel.x + offsetX, pixel.y + offsetY, 7);
         marker.setDepth(GameConfig.rendering.playerNumberDepth - 1);
         this.playerMarkers.set(markerKey, marker);
+        movedObjects.push(marker);
 
         // Player number circle
         const playerText = this.add
@@ -274,6 +284,7 @@ export class GameScene extends Phaser.Scene {
           .setDepth(GameConfig.rendering.playerNumberDepth);
 
         this.playerNumbers.set(markerKey, playerText);
+        movedObjects.push(playerText);
 
         const hero = this.heroes.find(h => h.ownerId === player.id);
         const heroClass = hero ? heroClasses[hero.classId] : null;
@@ -303,6 +314,29 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(0.5)
             .setDepth(GameConfig.rendering.playerNumberDepth + 2);
           this.heroMarkers.set(markerKey, heroText);
+          movedObjects.push(heroText);
+          movedObjects.push(heroBadge);
+        }
+
+        // Glide the token from its previous tile into place.
+        if (movedFrom) {
+          const dx = movedFrom.x - pixel.x;
+          const dy = movedFrom.y - pixel.y;
+          movedObjects.forEach((obj) => {
+            const t = obj as unknown as { x: number; y: number };
+            const targetX = t.x;
+            const targetY = t.y;
+            t.x = targetX + dx;
+            t.y = targetY + dy;
+            const tween = this.tweens.add({
+              targets: obj,
+              x: targetX,
+              y: targetY,
+              duration: 320,
+              ease: "Cubic.easeInOut",
+            });
+            void tween;
+          });
         }
       });
     }
@@ -1090,6 +1124,19 @@ export class GameScene extends Phaser.Scene {
       });
   }
 
+  /** Floating combat/heal number above a tile (e.g. "-3", "+2"). */
+  public triggerFloatingNumber(coords: CubeCoords, text: string, color?: string): void {
+    if (!this.animationSystem) return;
+    this.animationSystem.createFloatingNumber(coords, text, color);
+  }
+
+  /** Combat clash impact (shockwave + sparks) with a brief camera shake. */
+  public triggerCombatClash(coords: CubeCoords): void {
+    if (!this.animationSystem) return;
+    this.animationSystem.createCombatClash(coords);
+    this.cameras.main.shake(180, 0.006);
+  }
+
   // Method to update event handlers from React
   public updateEventHandlers(handlers: {
     onTileClick: (coords: CubeCoords) => void;
@@ -1150,6 +1197,8 @@ export class GameScene extends Phaser.Scene {
       this.backdropGraphics.destroy();
       this.backdropGraphics = undefined;
     }
+
+    this.playerLastCoords.clear();
 
     this.input.off("pointermove", this.handlePointerMove, this);
     this.input.off("pointerdown", this.handlePointerDown, this);

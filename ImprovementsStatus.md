@@ -211,6 +211,8 @@ Tracks the implementation progress of all deferred features cataloged in `Improv
 - **2026-06-10 proof:** Added Playwright PNG byte-level canvas checks so local, 30-player, and gated live paths assert rendered board size, opacity, colour variety, detail pixels, and contrast instead of only checking that a screenshot file exists.
 - **2026-06-10 contour pass:** Added optimized inner contour rings and terrain-coloured edge accents that improve tile readability while preserving the 30-player browser frame thresholds.
 - **2026-06-11 ambient backdrop:** Added a world-anchored radial vignette plus a softly breathing teal glow and concentric guide rings beneath the board, framing the play surface with depth. Tween/graphics are torn down in scene cleanup.
+- **2026-06-11 combat & ability VFX:** Added `AnimationSystem.createFloatingNumber` (rising combat/heal numbers) and `createCombatClash` (expanding shockwave ring + spark burst), exposed on the scene as `triggerFloatingNumber`/`triggerCombatClash` with a brief camera shake. `GameCanvas` maps new `combat`/`damage`/`healing` activity events to board VFX, resolving tile positions from Redux and seeding seen-IDs on mount/restore so history isn't replayed. Verified in-browser: combat fired a Combat Report plus board clash/floating-damage feedback with zero console errors.
+- **2026-06-11 move glide:** Player/hero tokens now glide from their previous tile to the new one (position-offset tween) instead of snapping, tracked per-player in the scene and cleared on cleanup.
 - **Runtime fix:** Replaced unsupported Phaser `Graphics.quadraticCurveTo` calls with segmented line drawing after browser smoke exposed the runtime error.
 
 ### G2 — Browser Smoke / Runtime Resilience — COMPLETE

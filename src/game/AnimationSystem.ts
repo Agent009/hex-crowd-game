@@ -286,6 +286,103 @@ export class GameAnimationSystem implements PerformanceSettings {
     });
   }
 
+  /**
+   * Floating combat number (e.g. "-3" / "+2") rising from a tile and fading.
+   * Used for board-level combat, spell, and healing feedback.
+   */
+  public createFloatingNumber(
+    coords: CubeCoords,
+    text: string,
+    color: string = "#ffffff"
+  ): void {
+    const pixel = cubeToPixel(coords, this.hexSize);
+    const jitterX = (((coords.q * 53 + coords.r * 17) % 11) - 5) * 2;
+
+    const label = this.createText();
+    label.setText(text);
+    label.setStyle({
+      fontSize: "20px",
+      color,
+      fontStyle: "bold",
+      stroke: "#020617",
+      strokeThickness: 4,
+    });
+    label.setPosition(pixel.x + jitterX, pixel.y - this.hexSize * 0.3);
+    label.setOrigin(0.5);
+    label.setDepth(GameConfig.rendering.animationDepth + 20);
+
+    const tween = this.scene.tweens.add({
+      targets: label,
+      y: pixel.y - this.hexSize * 1.4,
+      alpha: { from: 1, to: 0 },
+      scale: { from: 0.7, to: 1.25 },
+      duration: 1100,
+      ease: "Cubic.easeOut",
+      onComplete: () => {
+        this.destroyText(label);
+        this.activeAnimations.delete(tween);
+      },
+    });
+    this.activeAnimations.add(tween);
+  }
+
+  /**
+   * A combat clash impact: an expanding shockwave ring plus a quick spark burst,
+   * centred on the defending tile.
+   */
+  public createCombatClash(coords: CubeCoords): void {
+    const pixel = cubeToPixel(coords, this.hexSize);
+
+    // Expanding shockwave ring.
+    const ring = this.createGraphics();
+    ring.setPosition(pixel.x, pixel.y);
+    ring.setDepth(GameConfig.rendering.animationDepth + 5);
+    const ringTween = this.scene.tweens.add({
+      targets: ring,
+      duration: 520,
+      ease: "Cubic.easeOut",
+      onUpdate: (t: Phaser.Tweens.Tween) => {
+        const p = t.progress;
+        const radius = this.hexSize * (0.3 + p * 1.3);
+        const alpha = 0.9 * (1 - p);
+        ring.clear();
+        ring.lineStyle(5, 0xfca5a5, alpha);
+        ring.strokeCircle(0, 0, radius);
+        ring.lineStyle(2, 0xffffff, alpha * 0.7);
+        ring.strokeCircle(0, 0, radius * 0.7);
+      },
+      onComplete: () => {
+        this.destroyGraphics(ring);
+        this.activeAnimations.delete(ringTween);
+      },
+    });
+    this.activeAnimations.add(ringTween);
+
+    // Spark burst using the existing star particle texture.
+    if (this.scene.textures.exists(TextureKeys.SPARKLE_STAR_PARTICLE)) {
+      this.particleEmitterManager.createEmitter({
+        x: pixel.x,
+        y: pixel.y,
+        texture: TextureKeys.SPARKLE_STAR_PARTICLE,
+        config: {
+          speed: { min: 80, max: 200 },
+          angle: { min: 0, max: 360 },
+          scale: { start: 0.9, end: 0 },
+          alpha: { start: 1, end: 0 },
+          tint: [0xfca5a5, 0xfecaca, 0xffffff],
+          lifespan: 450,
+          quantity: this.performanceMode
+            ? GameConfig.animation.particleCountLow
+            : GameConfig.animation.particleCountHigh,
+          frequency: -1,
+          gravityY: 60,
+        },
+        autoDestroy: true,
+        autoDestroyDelay: 500,
+      });
+    }
+  }
+
   private createHexPulse(
     position: { x: number; y: number },
     duration: number

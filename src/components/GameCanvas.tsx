@@ -20,8 +20,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
 
   const { tiles } = useSelector((state: RootState) => state.world);
   const { showPlayerNumbers } = useSelector((state: RootState) => state.ui);
-  const { activityEvents, heroes } = useSelector((state: RootState) => state.game);
+  const { activityEvents, heroes, players } = useSelector((state: RootState) => state.game);
   const lastDisasterEventIdRef = useRef<string | null>(null);
+  const seenVfxIdsRef = useRef<Set<string>>(new Set());
+  const vfxInitializedRef = useRef(false);
+  // Keep a live handle to player positions so the VFX effect can resolve a
+  // tile for events that only carry a playerId, without re-running on moves.
+  const playersRef = useRef(players);
+  playersRef.current = players;
 
   // Memoized event handlers to prevent recreation on every render
   const handleTileClick = useCallback((coords: CubeCoords) => {
@@ -208,6 +214,69 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
       }
     });
   }, [activityEvents, tiles]);
+
+  // Board-level combat / ability feedback: floating damage & heal numbers and
+  // combat clash effects, driven by new activity events.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !scene.scene.isActive()) return;
+
+    const seen = seenVfxIdsRef.current;
+
+    // On first run (mount / state restore) seed the seen-set so we don't replay
+    // the whole backlog of events as animations.
+    if (!vfxInitializedRef.current) {
+      activityEvents.forEach((e) => seen.add(e.id));
+      vfxInitializedRef.current = true;
+      return;
+    }
+
+    const resolveCoords = (event: typeof activityEvents[number]): CubeCoords | null => {
+      if (event.details?.coords) return event.details.coords;
+      if (event.playerId) {
+        const player = playersRef.current.find((p) => p.id === event.playerId);
+        if (player) return player.position;
+      }
+      return null;
+    };
+
+    // Events are newest-first; collect just the unseen ones and cap the burst.
+    const fresh = activityEvents.filter((e) => !seen.has(e.id));
+    fresh.slice(0, 8).reverse().forEach((event) => {
+      const coords = resolveCoords(event);
+      if (!coords) return;
+
+      switch (event.type) {
+        case 'combat':
+          if (event.details?.coords) {
+            scene.triggerCombatClash(event.details.coords);
+          }
+          if (event.details?.damage) {
+            scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#fca5a5');
+          }
+          break;
+        case 'damage':
+          if (event.details?.damage) {
+            scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#f87171');
+          }
+          break;
+        case 'healing':
+          if (event.details?.healing) {
+            scene.triggerFloatingNumber(coords, `+${event.details.healing}`, '#86efac');
+          }
+          break;
+        default:
+          break;
+      }
+    });
+
+    activityEvents.forEach((e) => seen.add(e.id));
+    // Bound the set so it can't grow without limit over a long game.
+    if (seen.size > 400) {
+      const keep = new Set(activityEvents.map((e) => e.id));
+      seenVfxIdsRef.current = keep;
+    }
+  }, [activityEvents]);
   
   return (
     <div 
