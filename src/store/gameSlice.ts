@@ -816,8 +816,11 @@ const gameSlice = createSlice({
                     id: `${Date.now()}_${Math.random()}`,
                     timestamp: Date.now(),
                     type: 'terrain_effect',
+                    playerId: player.id,
+                    playerName: player.name,
+                    playerNumber: player.number,
                     message: `${player.name || 'Unknown'} ${statusMessage}`,
-                    details: {}
+                    details: { damage: Math.abs(takeDamage), terrain: terrain.name, coords: player.position }
                   });
                 }
               }

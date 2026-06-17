@@ -669,14 +669,22 @@ export class GameAnimationSystem implements PerformanceSettings {
         );
       }
 
+      // Particle burst is heavier than the sprite/shake, so only emit on a
+      // bounded number of tiles to keep large terrains from flooding the GPU.
+      const maxEmitterTiles = this.performanceMode ? 4 : 10;
+
       // Create disaster sprites on affected tiles
-      const animations: Promise<void>[] = affectedTiles.map((coords) => {
+      const animations: Promise<void>[] = affectedTiles.map((coords, index) => {
         return new Promise((tileResolve) => {
           const pixel = cubeToPixel(coords, this.hexSize);
           const sprite = this.scene.add.sprite(pixel.x, pixel.y, textureKey);
           sprite.setDepth(GameConfig.rendering.disasterDepth);
           sprite.setAlpha(0.8);
           this.activeGameObjects.add(sprite);
+
+          if (index < maxEmitterTiles) {
+            this.emitDisasterParticles(disasterId, pixel);
+          }
 
           const tween = this.scene.tweens.add({
             targets: sprite,
@@ -700,6 +708,120 @@ export class GameAnimationSystem implements PerformanceSettings {
       Promise.all(animations).then(() => {
         resolve();
       });
+    });
+  }
+
+  /**
+   * Spawn a short particle burst tuned to the disaster type at a tile centre.
+   * Mirrors the combat-clash emitter so disasters read as physical events
+   * (kicked-up dust, swirling sand, rising embers, spray, sparks) rather than
+   * a silent sprite fade.
+   */
+  private emitDisasterParticles(
+    disasterId: string,
+    pixel: { x: number; y: number }
+  ): void {
+    const quantity = this.performanceMode
+      ? GameConfig.animation.particleCountLow
+      : GameConfig.animation.particleCountHigh;
+
+    const presets: Readonly<
+      Record<
+        string,
+        {
+          texture: string;
+          config: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig;
+          autoDestroyDelay: number;
+        }
+      >
+    > = {
+      earthquake: {
+        texture: TextureKeys.DUST_PARTICLE,
+        config: {
+          speed: { min: 40, max: 140 },
+          angle: { min: 200, max: 340 },
+          scale: { start: 1.2, end: 0 },
+          alpha: { start: 0.9, end: 0 },
+          tint: [0x8b4513, 0xa0522d, 0xd2b48c],
+          lifespan: 750,
+          quantity,
+          frequency: -1,
+          gravityY: 220,
+        },
+        autoDestroyDelay: 800,
+      },
+      sandstorm: {
+        texture: TextureKeys.DUST_PARTICLE,
+        config: {
+          speedX: { min: 120, max: 260 },
+          speedY: { min: -30, max: 30 },
+          scale: { start: 1, end: 0.2 },
+          alpha: { start: 0.7, end: 0 },
+          tint: [0xdeb887, 0xd2b48c, 0xf5deb3],
+          lifespan: 900,
+          quantity,
+          frequency: -1,
+          gravityY: 0,
+        },
+        autoDestroyDelay: 950,
+      },
+      wildfire: {
+        texture: TextureKeys.GLOW_PARTICLE,
+        config: {
+          speed: { min: 30, max: 90 },
+          angle: { min: 240, max: 300 },
+          scale: { start: 0.9, end: 0 },
+          alpha: { start: 1, end: 0 },
+          tint: [0xff4500, 0xff8c00, 0xffd700],
+          lifespan: 800,
+          quantity,
+          frequency: -1,
+          gravityY: -120,
+        },
+        autoDestroyDelay: 850,
+      },
+      tsunami: {
+        texture: TextureKeys.SPARKLE_DOT_PARTICLE,
+        config: {
+          speed: { min: 60, max: 160 },
+          angle: { min: 210, max: 330 },
+          scale: { start: 1.4, end: 0 },
+          alpha: { start: 1, end: 0 },
+          tint: [0x4682b4, 0x87ceeb, 0xffffff],
+          lifespan: 700,
+          quantity,
+          frequency: -1,
+          gravityY: 200,
+        },
+        autoDestroyDelay: 750,
+      },
+      storm: {
+        texture: TextureKeys.SPARKLE_STAR_PARTICLE,
+        config: {
+          speed: { min: 90, max: 220 },
+          angle: { min: 0, max: 360 },
+          scale: { start: 0.9, end: 0 },
+          alpha: { start: 1, end: 0 },
+          tint: [0x483d8b, 0x9370db, 0xffffff],
+          lifespan: 500,
+          quantity,
+          frequency: -1,
+          gravityY: 40,
+        },
+        autoDestroyDelay: 550,
+      },
+    };
+
+    const preset = presets[disasterId];
+    if (!preset || !this.scene.textures.exists(preset.texture)) return;
+
+    this.particleEmitterManager.createEmitter({
+      x: pixel.x,
+      y: pixel.y,
+      texture: preset.texture,
+      config: preset.config,
+      autoDestroy: true,
+      autoDestroyDelay: preset.autoDestroyDelay,
     });
   }
 

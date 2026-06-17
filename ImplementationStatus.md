@@ -1,10 +1,43 @@
-# Implementation Status & Bug Fix Plan
+# HEX Crowd Game — Implementation Status
+
+Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs every critical bug, logic error, 
+performance issue, and architectural problem found, organized into actionable phases for systematic resolution before 
+any new feature work begins.
+
+This document tracks the **product/app build** by **epic -> feature -> status**. See
+[MarketingImplementationStatus.md](MarketingImplementationStatus.md) for the public-facing surface,
+[guides/GuideIndex.md](guides/GuideIndex.md) for the end-user guides, [local/SecurityAudit.md](local/SecurityAudit.md)
+for the recurring security/QA gate, and [local/WorkLog.md](local/WorkLog.md) for the per-task work log.
+
+---
 
 **Last updated:** 2026-06-10 — hero/combat UI, multiplayer action routing/auditing, local action ownership checks, host action/state-sync validation, host-control authorization, actor/session action-rate limiting, persisted-state restore/status validation, session-scoped ordered/deduplicated state-sync and host-migration delivery, throttled state-sync payload budget diagnostics, disconnect grace-window handling, optional session authority gateway, Supabase runtime guard, realtime diagnostics export and sink, Supabase data-integrity hardening, enhanced material-rich hex/hero board visuals, canvas error recovery, focused domain/realtime/session/E2E tests with canvas pixel-richness assertions, manual live Supabase CI E2E gate, locally verified long-soak profile, scheduled/manual long-soak CI gate, Supabase Edge Function CI typecheck, production readiness runbook, 30-player load and sustained browser-runtime profiling, reconnect identity hardening, persistence hash coverage, production chunk splitting, Vite 8 migration, and clean dependency audit.
 
-## Overview
+---
 
-Full codebase audit of the Heroes & Kingdoms Phaser game. This document catalogs every critical bug, logic error, performance issue, and architectural problem found, organized into actionable phases for systematic resolution before any new feature work begins.
+## Standing rules
+
+1. Any change that adds, removes or reshapes a user-facing feature must update this file, the  matching guide in 
+  `docs/guides/` (+ `GuideIndex.md`), the public marketing content (`lib/marketing.tsx` + the relevant page) and 
+  `docs/MarketingImplementationStatus.md`, and append a `docs/local/WorkLog.md` entry.
+2. **Security audit round (every 5 tranches).** After every 5 feature tranches, run a security + QA audit recorded in 
+  [`docs/local/SecurityAudit.md`](local/SecurityAudit.md). Fix Critical/High findings before further feature work. See 
+  _Security, QA & hardening_.
+3. **Documentation pruning round (every 10 iterations).** After every 10 feature iterations, prune 
+  `ImplementationStatus.md` and `MarketingImplementationStatus.md` to deduplicate overlapping content, streamline 
+  wording, optimise readability, and realign structure to this delivery-documentation-workflow.
+
+
+## Status keys
+
+| Status         | Meaning                                                                                         |
+|----------------|-------------------------------------------------------------------------------------------------|
+| ⬜ Pending      | Not started                                                                                     |
+| 🟨 In progress | Started and actively being built                                                                |
+| 🟪 Partial     | Some parts are complete, but the feature is not fully usable or documented                      |
+| 🟦 Blocked     | Cannot continue until a dependency, decision, credential, design, or external issue is resolved |
+| ✅ Complete     | Implemented, checked, documented, and ready for use                                             |
+| 🧊 Deferred    | Intentionally postponed                                                                         |
 
 ---
 

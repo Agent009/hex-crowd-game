@@ -26,6 +26,7 @@ export class GameScene extends Phaser.Scene {
   private tileTerrainIcons: Map<string, Phaser.GameObjects.Text> = new Map();
   private playerNumbers: Map<string, Phaser.GameObjects.Text> = new Map();
   private playerMarkers: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private playerHalos: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private heroMarkerBadges: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private heroMarkers: Map<string, Phaser.GameObjects.Text> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
@@ -211,6 +212,16 @@ export class GameScene extends Phaser.Scene {
     });
     markerKeysToRemove.forEach((k) => this.playerMarkers.delete(k));
 
+    const haloKeysToRemove: string[] = [];
+    this.playerHalos.forEach((halo, pKey) => {
+      if (pKey.startsWith(`${key}_`)) {
+        this.tweens.killTweensOf(halo);
+        halo.destroy();
+        haloKeysToRemove.push(pKey);
+      }
+    });
+    haloKeysToRemove.forEach((k) => this.playerHalos.delete(k));
+
     const heroKeysToRemove: string[] = [];
     this.heroMarkers.forEach((text, pKey) => {
       if (pKey.startsWith(`${key}_`)) {
@@ -260,13 +271,43 @@ export class GameScene extends Phaser.Scene {
         this.playerLastCoords.set(player.id, tile.coords);
         const movedObjects: Phaser.GameObjects.GameObject[] = [];
 
+        const cx = pixel.x + offsetX;
+        const cy = pixel.y + offsetY;
+
+        // Pulsing glow halo so a token is easy to spot against busy terrain.
+        // Drawn around local origin so scale tweens pulse in place.
+        const halo = this.add.graphics();
+        halo.fillStyle(teamColor, 0.28);
+        halo.fillCircle(0, 0, 17);
+        halo.fillStyle(teamColor, 0.18);
+        halo.fillCircle(0, 0, 22);
+        halo.setPosition(cx, cy);
+        halo.setDepth(GameConfig.rendering.playerNumberDepth - 2);
+        this.playerHalos.set(markerKey, halo);
+        movedObjects.push(halo);
+        this.tweens.add({
+          targets: halo,
+          alpha: { from: 0.55, to: 1 },
+          scale: { from: 0.85, to: 1.12 },
+          duration: 1100,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+
         const marker = this.add.graphics();
-        marker.fillStyle(0x0f172a, 0.92);
-        marker.fillCircle(pixel.x + offsetX, pixel.y + offsetY, 11);
-        marker.lineStyle(3, teamColor, 1);
-        marker.strokeCircle(pixel.x + offsetX, pixel.y + offsetY, 11);
-        marker.lineStyle(1, 0xffffff, 0.75);
-        marker.strokeCircle(pixel.x + offsetX, pixel.y + offsetY, 7);
+        // Soft drop shadow lifts the token off the board.
+        marker.fillStyle(0x000000, 0.4);
+        marker.fillCircle(cx, cy + 2, 13);
+        // Bright team-coloured body — reads as the player's colour at a glance.
+        marker.fillStyle(teamColor, 1);
+        marker.fillCircle(cx, cy, 12);
+        // Inner dark disc keeps the white number legible over any team colour.
+        marker.fillStyle(0x0f172a, 0.85);
+        marker.fillCircle(cx, cy, 8.5);
+        // Crisp white contrast ring against dark and light terrain alike.
+        marker.lineStyle(2.5, 0xffffff, 0.95);
+        marker.strokeCircle(cx, cy, 12);
         marker.setDepth(GameConfig.rendering.playerNumberDepth - 1);
         this.playerMarkers.set(markerKey, marker);
         movedObjects.push(marker);
@@ -322,20 +363,49 @@ export class GameScene extends Phaser.Scene {
         if (movedFrom) {
           const dx = movedFrom.x - pixel.x;
           const dy = movedFrom.y - pixel.y;
+          const glideDuration = 360;
           movedObjects.forEach((obj) => {
             const t = obj as unknown as { x: number; y: number };
             const targetX = t.x;
             const targetY = t.y;
             t.x = targetX + dx;
             t.y = targetY + dy;
-            const tween = this.tweens.add({
+            this.tweens.add({
               targets: obj,
               x: targetX,
               y: targetY,
-              duration: 320,
+              duration: glideDuration,
               ease: "Cubic.easeInOut",
             });
-            void tween;
+          });
+
+          // A little "pop" on the number as the token settles onto the tile.
+          playerText.setScale(1);
+          this.tweens.add({
+            targets: playerText,
+            scale: { from: 1, to: 1.35 },
+            delay: glideDuration - 80,
+            duration: 130,
+            yoyo: true,
+            ease: "Quad.easeOut",
+          });
+
+          // Expanding footstep ripple at the destination on arrival.
+          const ripple = this.add.graphics();
+          ripple.lineStyle(3, teamColor, 0.85);
+          ripple.strokeCircle(0, 0, 8);
+          ripple.setPosition(cx, cy);
+          ripple.setDepth(GameConfig.rendering.playerNumberDepth - 2);
+          ripple.setScale(0.4);
+          ripple.setAlpha(0);
+          this.tweens.add({
+            targets: ripple,
+            delay: glideDuration - 60,
+            scale: 2.6,
+            alpha: { from: 0.9, to: 0 },
+            duration: 480,
+            ease: "Cubic.easeOut",
+            onComplete: () => ripple.destroy(),
           });
         }
       });
@@ -992,6 +1062,12 @@ export class GameScene extends Phaser.Scene {
 
     this.playerMarkers.forEach((marker) => marker.destroy());
     this.playerMarkers.clear();
+
+    this.playerHalos.forEach((halo) => {
+      this.tweens.killTweensOf(halo);
+      halo.destroy();
+    });
+    this.playerHalos.clear();
 
     this.heroMarkers.forEach((text) => text.destroy());
     this.heroMarkers.clear();

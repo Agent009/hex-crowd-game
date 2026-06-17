@@ -21,13 +21,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   const { tiles } = useSelector((state: RootState) => state.world);
   const { showPlayerNumbers } = useSelector((state: RootState) => state.ui);
   const { activityEvents, heroes, players } = useSelector((state: RootState) => state.game);
-  const lastDisasterEventIdRef = useRef<string | null>(null);
   const seenVfxIdsRef = useRef<Set<string>>(new Set());
   const vfxInitializedRef = useRef(false);
   // Keep a live handle to player positions so the VFX effect can resolve a
   // tile for events that only carry a playerId, without re-running on moves.
   const playersRef = useRef(players);
   playersRef.current = players;
+  // Live handle to tiles so disaster events can resolve all tiles of a terrain
+  // without the VFX effect re-running every time the board changes.
+  const tilesRef = useRef(tiles);
+  tilesRef.current = tiles;
 
   // Memoized event handlers to prevent recreation on every render
   const handleTileClick = useCallback((coords: CubeCoords) => {
@@ -171,52 +174,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
     }
   }, [handleTileClick, handleTileHover]);
 
-  // Trigger disaster animations when disaster events occur
-  useEffect(() => {
-    if (!sceneRef.current || !sceneRef.current.scene.isActive()) return;
-
-    // Find new disaster events
-    const disasterEvents = activityEvents.filter(
-      (event) =>
-        event.type === 'disaster' &&
-        event.id !== lastDisasterEventIdRef.current &&
-        event.details &&
-        'disaster' in event.details &&
-        'terrain' in event.details
-    );
-
-    disasterEvents.forEach((event) => {
-      if (!event.details || typeof event.details !== 'object') return;
-
-      const disasterName = (event.details as { disaster?: string }).disaster;
-      const terrain = (event.details as { terrain?: string }).terrain;
-
-      if (!disasterName || !terrain) return;
-
-      // Find disaster ID from name
-      const disasterEntry = Object.entries(disasterData).find(
-        ([, data]) => data.name === disasterName
-      );
-
-      if (!disasterEntry) return;
-
-      const [disasterId] = disasterEntry;
-
-      // Get all tiles affected by this disaster (same terrain)
-      const affectedTiles: CubeCoords[] = Object.values(tiles)
-        .filter((tile) => tile.terrain === (terrain as TerrainType))
-        .map((tile) => tile.coords);
-
-      if (affectedTiles.length > 0) {
-        // Trigger animation
-        sceneRef.current?.triggerDisasterAnimation(disasterId, affectedTiles);
-        lastDisasterEventIdRef.current = event.id;
-      }
-    });
-  }, [activityEvents, tiles]);
-
-  // Board-level combat / ability feedback: floating damage & heal numbers and
-  // combat clash effects, driven by new activity events.
+  // Board-level feedback driven by new activity events: floating damage & heal
+  // numbers, combat clashes, terrain-effect ticks and disaster animations.
+  // A single seen-set dedupes everything so each event fires its VFX exactly
+  // once, even across re-renders and state-syncs.
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene || !scene.scene.isActive()) return;
@@ -240,30 +201,67 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
       return null;
     };
 
+    // The main disaster event carries `affectedPlayers`; play the full
+    // terrain-wide animation (sprite + particles + shake) for it once.
+    const triggerDisaster = (event: typeof activityEvents[number]): void => {
+      const details = event.details;
+      if (!details || !details.disaster || !details.terrain) return;
+      if (!('affectedPlayers' in details)) return;
+
+      const entry = Object.entries(disasterData).find(
+        ([, data]) => data.name === details.disaster
+      );
+      if (!entry) return;
+      const [disasterId] = entry;
+
+      const affectedTiles: CubeCoords[] = Object.values(tilesRef.current)
+        .filter((tile) => tile.terrain === (details.terrain as TerrainType))
+        .map((tile) => tile.coords);
+
+      if (affectedTiles.length > 0) {
+        scene.triggerDisasterAnimation(disasterId, affectedTiles);
+      }
+    };
+
     // Events are newest-first; collect just the unseen ones and cap the burst.
+    // The cap is generous enough that a single disaster batch (one "struck"
+    // event plus per-player damage events on a crowded terrain) is never
+    // truncated, which would otherwise drop the terrain-wide animation.
     const fresh = activityEvents.filter((e) => !seen.has(e.id));
-    fresh.slice(0, 8).reverse().forEach((event) => {
+    fresh.slice(0, 24).reverse().forEach((event) => {
       const coords = resolveCoords(event);
-      if (!coords) return;
 
       switch (event.type) {
         case 'combat':
           if (event.details?.coords) {
             scene.triggerCombatClash(event.details.coords);
           }
-          if (event.details?.damage) {
+          if (coords && event.details?.damage) {
             scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#fca5a5');
           }
           break;
         case 'damage':
-          if (event.details?.damage) {
+          if (coords && event.details?.damage) {
             scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#f87171');
           }
           break;
+        case 'terrain_effect':
+          if (coords && event.details?.damage) {
+            scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#fda4af');
+          }
+          break;
         case 'healing':
-          if (event.details?.healing) {
+          if (coords && event.details?.healing) {
             scene.triggerFloatingNumber(coords, `+${event.details.healing}`, '#86efac');
           }
+          break;
+        case 'disaster':
+          // Per-player disaster damage shows a floating number...
+          if (coords && event.details?.damage) {
+            scene.triggerFloatingNumber(coords, `-${event.details.damage}`, '#fb923c');
+          }
+          // ...while the terrain-wide "struck" event drives the big animation.
+          triggerDisaster(event);
           break;
         default:
           break;
