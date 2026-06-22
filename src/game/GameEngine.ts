@@ -7,11 +7,19 @@ import {
   coordsToKey,
   coordsEqual,
   isIsometricGrid,
+  isTacticalGrid,
   getHexPoints,
   DEFAULT_HEX_SIZE,
+  TACTICAL_TILT_Y,
 } from "../utils/hexGrid";
-import { terrainData, TerrainTypeData } from "../data/gameData";
+import { terrainData, TerrainType, TerrainTypeData, Player } from "../data/gameData";
 import { disasterData } from "../data/gameData";
+import {
+  terrainTextureSources,
+  terrainSourceKey,
+  terrainTileKey,
+  TERRAIN_SAMPLE_SCALE,
+} from "./terrainTextures";
 import { AtmosphericParticleSystem } from "./ParticleSystem";
 import { GameAnimationSystem } from "./AnimationSystem";
 import { TextureFactory } from "./TextureFactory";
@@ -23,12 +31,14 @@ import { heroClasses } from "../data/heroesData";
 
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private tileTerrainSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+  private terrainVariantCounts: Partial<Record<TerrainType, number>> = {};
+  private highlightGraphics?: Phaser.GameObjects.Graphics;
+  private hoveredTile: CubeCoords | null = null;
   private tileTerrainIcons: Map<string, Phaser.GameObjects.Text> = new Map();
-  private playerNumbers: Map<string, Phaser.GameObjects.Text> = new Map();
-  private playerMarkers: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private playerHalos: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private heroMarkerBadges: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private heroMarkers: Map<string, Phaser.GameObjects.Text> = new Map();
+  // One container per player-on-tile holds the whole standing pawn (halo,
+  // shadow, body, head/number, hero badge) so it can move and animate as a unit.
+  private playerTokens: Map<string, Phaser.GameObjects.Container> = new Map();
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private backdropGraphics?: Phaser.GameObjects.Graphics;
   private ambientGlow?: Phaser.GameObjects.Graphics;
@@ -53,7 +63,16 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  preload() {}
+  preload() {
+    // Atmospheric terrain art is only used by the tilted tactical board.
+    if (isTacticalGrid) {
+      (Object.keys(terrainTextureSources) as TerrainType[]).forEach((terrain) => {
+        terrainTextureSources[terrain].forEach((url, variant) => {
+          this.load.image(terrainSourceKey(terrain, variant), url);
+        });
+      });
+    }
+  }
 
   create() {
 
@@ -64,7 +83,7 @@ export class GameScene extends Phaser.Scene {
     // Make the game instance globally accessible for coordinate conversion
     setPhaserGame(this.game);
 
-    if (isIsometricGrid) {
+    if (isIsometricGrid || isTacticalGrid) {
       this.cameras.main.setRotation(0);
       this.cameras.main.setBackgroundColor(GameConfig.camera.backgroundColor);
     }
@@ -82,6 +101,14 @@ export class GameScene extends Phaser.Scene {
 
     // Initialize all textures first (must be before particle/animation systems)
     TextureFactory.initialize(this);
+
+    // Bake atmospheric, hex-masked terrain tile textures from the loaded art.
+    this.bakeTerrainTextures();
+
+    // Single shared overlay for hover/select rings, drawn above textured tiles
+    // but below tokens — avoids per-tile redraws when the texture sits on top.
+    this.highlightGraphics = this.add.graphics();
+    this.highlightGraphics.setDepth(GameConfig.rendering.terrainIconDepth - 4);
 
     this.sharedEmitterManager = new ParticleEmitterManager(this);
     this.particleSystem = new AtmosphericParticleSystem(this, this.hexSize, this.sharedEmitterManager);
@@ -188,57 +215,26 @@ export class GameScene extends Phaser.Scene {
       this.tiles.delete(key);
     }
 
+    const terrainSprite = this.tileTerrainSprites.get(key);
+    if (terrainSprite) {
+      terrainSprite.destroy();
+      this.tileTerrainSprites.delete(key);
+    }
+
     const terrainIcon = this.tileTerrainIcons.get(key);
     if (terrainIcon) {
       terrainIcon.destroy();
       this.tileTerrainIcons.delete(key);
     }
 
-    const keysToRemove: string[] = [];
-    this.playerNumbers.forEach((text, pKey) => {
+    const tokenKeysToRemove: string[] = [];
+    this.playerTokens.forEach((token, pKey) => {
       if (pKey.startsWith(`${key}_`)) {
-        text.destroy();
-        keysToRemove.push(pKey);
+        this.destroyPlayerToken(token);
+        tokenKeysToRemove.push(pKey);
       }
     });
-    keysToRemove.forEach((k) => this.playerNumbers.delete(k));
-
-    const markerKeysToRemove: string[] = [];
-    this.playerMarkers.forEach((marker, pKey) => {
-      if (pKey.startsWith(`${key}_`)) {
-        marker.destroy();
-        markerKeysToRemove.push(pKey);
-      }
-    });
-    markerKeysToRemove.forEach((k) => this.playerMarkers.delete(k));
-
-    const haloKeysToRemove: string[] = [];
-    this.playerHalos.forEach((halo, pKey) => {
-      if (pKey.startsWith(`${key}_`)) {
-        this.tweens.killTweensOf(halo);
-        halo.destroy();
-        haloKeysToRemove.push(pKey);
-      }
-    });
-    haloKeysToRemove.forEach((k) => this.playerHalos.delete(k));
-
-    const heroKeysToRemove: string[] = [];
-    this.heroMarkers.forEach((text, pKey) => {
-      if (pKey.startsWith(`${key}_`)) {
-        text.destroy();
-        heroKeysToRemove.push(pKey);
-      }
-    });
-    heroKeysToRemove.forEach((k) => this.heroMarkers.delete(k));
-
-    const heroBadgeKeysToRemove: string[] = [];
-    this.heroMarkerBadges.forEach((badge, pKey) => {
-      if (pKey.startsWith(`${key}_`)) {
-        badge.destroy();
-        heroBadgeKeysToRemove.push(pKey);
-      }
-    });
-    heroBadgeKeysToRemove.forEach((k) => this.heroMarkerBadges.delete(k));
+    tokenKeysToRemove.forEach((k) => this.playerTokens.delete(k));
   }
 
   private renderTile(tile: HexTile) {
@@ -249,6 +245,25 @@ export class GameScene extends Phaser.Scene {
     graphics.setPosition(pixel.x, pixel.y);
 
     this._redrawTileGraphics(graphics, tile, false, false);
+
+    // Atmospheric terrain photo as the slab top face (tactical board), layered
+    // just above the slab walls. The vector top drawn above is the fallback for
+    // the first frame / non-tactical modes.
+    if (isTacticalGrid && (this.terrainVariantCounts[tile.terrain] ?? 0) > 0) {
+      const variant = this.pickTerrainVariant(tile);
+      const tileKey = terrainTileKey(tile.terrain, variant);
+      if (this.textures.exists(tileKey)) {
+        const active = tile.isActive !== false;
+        const sprite = this.add
+          .image(pixel.x, pixel.y, tileKey)
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(this.hexTexWidth, this.hexTexHeight)
+          .setDepth(Math.round(pixel.y + GameConfig.rendering.tileDepthOffset) + 0.3);
+        // Dim inactive/non-harvestable tiles instead of the vector hatch overlay.
+        if (!active) sprite.setTint(0x5b6b86);
+        this.tileTerrainSprites.set(key, sprite);
+      }
+    }
 
     // Add players on this tile
     if (tile.players && tile.players.length > 0 && this.showPlayerNumbers) {
@@ -261,153 +276,21 @@ export class GameScene extends Phaser.Scene {
         const offsetX = (col - (columns - 1) / 2) * spacing;
         const offsetY = (row - (Math.ceil(playerCount / columns) - 1) / 2) * spacing;
         const markerKey = `${key}_${player.id}`;
-        const teamColor = Phaser.Display.Color.HexStringToColor(player.color).color;
 
-        // Track movement so the token can glide from its previous tile.
+        // Track movement so the token can hop in from its previous tile.
         const prevCoords = this.playerLastCoords.get(player.id);
         const movedFrom = prevCoords && !coordsEqual(prevCoords, tile.coords)
           ? cubeToPixel(prevCoords, this.hexSize)
           : null;
         this.playerLastCoords.set(player.id, tile.coords);
-        const movedObjects: Phaser.GameObjects.GameObject[] = [];
 
-        const cx = pixel.x + offsetX;
-        const cy = pixel.y + offsetY;
-
-        // Pulsing glow halo so a token is easy to spot against busy terrain.
-        // Drawn around local origin so scale tweens pulse in place.
-        const halo = this.add.graphics();
-        halo.fillStyle(teamColor, 0.28);
-        halo.fillCircle(0, 0, 17);
-        halo.fillStyle(teamColor, 0.18);
-        halo.fillCircle(0, 0, 22);
-        halo.setPosition(cx, cy);
-        halo.setDepth(GameConfig.rendering.playerNumberDepth - 2);
-        this.playerHalos.set(markerKey, halo);
-        movedObjects.push(halo);
-        this.tweens.add({
-          targets: halo,
-          alpha: { from: 0.55, to: 1 },
-          scale: { from: 0.85, to: 1.12 },
-          duration: 1100,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.easeInOut",
-        });
-
-        const marker = this.add.graphics();
-        // Soft drop shadow lifts the token off the board.
-        marker.fillStyle(0x000000, 0.4);
-        marker.fillCircle(cx, cy + 2, 13);
-        // Bright team-coloured body — reads as the player's colour at a glance.
-        marker.fillStyle(teamColor, 1);
-        marker.fillCircle(cx, cy, 12);
-        // Inner dark disc keeps the white number legible over any team colour.
-        marker.fillStyle(0x0f172a, 0.85);
-        marker.fillCircle(cx, cy, 8.5);
-        // Crisp white contrast ring against dark and light terrain alike.
-        marker.lineStyle(2.5, 0xffffff, 0.95);
-        marker.strokeCircle(cx, cy, 12);
-        marker.setDepth(GameConfig.rendering.playerNumberDepth - 1);
-        this.playerMarkers.set(markerKey, marker);
-        movedObjects.push(marker);
-
-        // Player number circle
-        const playerText = this.add
-          .text(pixel.x + offsetX, pixel.y + offsetY, player.number.toString(), {
-            fontSize: "12px",
-            color: "#ffffff",
-            fontStyle: "bold",
-            stroke: "#020617",
-            strokeThickness: 3,
-          })
-          .setOrigin(0.5)
-          .setDepth(GameConfig.rendering.playerNumberDepth);
-
-        this.playerNumbers.set(markerKey, playerText);
-        movedObjects.push(playerText);
-
-        const hero = this.heroes.find(h => h.ownerId === player.id);
-        const heroClass = hero ? heroClasses[hero.classId] : null;
-        if (hero && heroClass) {
-          const heroX = pixel.x + offsetX + 10;
-          const heroY = pixel.y + offsetY - 11;
-          const heroColor = this.heroClassColor(hero.classId);
-          const heroHealth = Phaser.Math.Clamp(hero.hp / Math.max(hero.maxHp, 1), 0, 1);
-          const heroBadge = this.add.graphics();
-          heroBadge.fillStyle(0x020617, 0.9);
-          heroBadge.fillCircle(heroX, heroY, 10);
-          heroBadge.fillStyle(heroColor, 0.95);
-          heroBadge.fillCircle(heroX, heroY, 7);
-          heroBadge.lineStyle(2, 0xffffff, 0.9);
-          heroBadge.beginPath();
-          heroBadge.arc(heroX, heroY, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * heroHealth, false);
-          heroBadge.strokePath();
-          heroBadge.setDepth(GameConfig.rendering.playerNumberDepth + 1);
-          this.heroMarkerBadges.set(markerKey, heroBadge);
-
-          const heroText = this.add
-            .text(heroX, heroY, heroClass.icon, {
-              fontSize: "11px",
-              stroke: "#020617",
-              strokeThickness: 2,
-            })
-            .setOrigin(0.5)
-            .setDepth(GameConfig.rendering.playerNumberDepth + 2);
-          this.heroMarkers.set(markerKey, heroText);
-          movedObjects.push(heroText);
-          movedObjects.push(heroBadge);
-        }
-
-        // Glide the token from its previous tile into place.
-        if (movedFrom) {
-          const dx = movedFrom.x - pixel.x;
-          const dy = movedFrom.y - pixel.y;
-          const glideDuration = 360;
-          movedObjects.forEach((obj) => {
-            const t = obj as unknown as { x: number; y: number };
-            const targetX = t.x;
-            const targetY = t.y;
-            t.x = targetX + dx;
-            t.y = targetY + dy;
-            this.tweens.add({
-              targets: obj,
-              x: targetX,
-              y: targetY,
-              duration: glideDuration,
-              ease: "Cubic.easeInOut",
-            });
-          });
-
-          // A little "pop" on the number as the token settles onto the tile.
-          playerText.setScale(1);
-          this.tweens.add({
-            targets: playerText,
-            scale: { from: 1, to: 1.35 },
-            delay: glideDuration - 80,
-            duration: 130,
-            yoyo: true,
-            ease: "Quad.easeOut",
-          });
-
-          // Expanding footstep ripple at the destination on arrival.
-          const ripple = this.add.graphics();
-          ripple.lineStyle(3, teamColor, 0.85);
-          ripple.strokeCircle(0, 0, 8);
-          ripple.setPosition(cx, cy);
-          ripple.setDepth(GameConfig.rendering.playerNumberDepth - 2);
-          ripple.setScale(0.4);
-          ripple.setAlpha(0);
-          this.tweens.add({
-            targets: ripple,
-            delay: glideDuration - 60,
-            scale: 2.6,
-            alpha: { from: 0.9, to: 0 },
-            duration: 480,
-            ease: "Cubic.easeOut",
-            onComplete: () => ripple.destroy(),
-          });
-        }
+        const token = this.buildPlayerToken(
+          player,
+          pixel.x + offsetX,
+          pixel.y + offsetY,
+          movedFrom ? { x: movedFrom.x + offsetX, y: movedFrom.y + offsetY } : null
+        );
+        this.playerTokens.set(markerKey, token);
       });
     }
 
@@ -418,23 +301,37 @@ export class GameScene extends Phaser.Scene {
       Phaser.Geom.Polygon.Contains
     );
     graphics.on("pointerover", () => {
-      this._redrawTileGraphics(
-        graphics,
-        tile,
-        true,
-        (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
-          false
-      );
+      // Textured tactical tiles are static; hover shows on the shared overlay
+      // so we never have to redraw (and re-cover) the photo top.
+      if (isTacticalGrid) {
+        this.hoveredTile = tile.coords;
+        this.updateHighlight();
+      } else {
+        this._redrawTileGraphics(
+          graphics,
+          tile,
+          true,
+          (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
+            false
+        );
+      }
       this.onTileHover?.(tile.coords);
     });
     graphics.on("pointerout", () => {
-      this._redrawTileGraphics(
-        graphics,
-        tile,
-        false,
-        (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
-          false
-      );
+      if (isTacticalGrid) {
+        if (this.hoveredTile && coordsEqual(this.hoveredTile, tile.coords)) {
+          this.hoveredTile = null;
+          this.updateHighlight();
+        }
+      } else {
+        this._redrawTileGraphics(
+          graphics,
+          tile,
+          false,
+          (this.selectedTile && coordsEqual(this.selectedTile, tile.coords)) ||
+            false
+        );
+      }
       this.onTileHover?.(null);
     });
     graphics.on("pointerdown", () => {
@@ -442,6 +339,217 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.tiles.set(key, graphics);
+  }
+
+  /**
+   * Build a standing isometric "pawn" for a player on a tile: a foreshortened
+   * ground halo + contact shadow, a shaded body rising off the board, and a
+   * number-disc head (plus a hero badge if owned), grouped in a container so
+   * the whole piece can hop between tiles as a unit.
+   */
+  private buildPlayerToken(
+    player: Player,
+    cx: number,
+    cy: number,
+    movedFrom: { x: number; y: number } | null
+  ): Phaser.GameObjects.Container {
+    const s = this.hexSize;
+    const tilt = isTacticalGrid ? TACTICAL_TILT_Y : 1;
+    const teamColor = Phaser.Display.Color.HexStringToColor(player.color).color;
+    const lightCol = this.mixColor(teamColor, 0xffffff, 0.28);
+    const darkCol = this.mixColor(teamColor, 0x000000, 0.4);
+
+    const container = this.add.container(cx, cy);
+    // Small per-row bias keeps nearer pawns above farther ones while staying in
+    // the token depth band (above grid/highlight, below floating animations).
+    container.setDepth(GameConfig.rendering.playerNumberDepth + cy * 0.02);
+
+    // Pulsing ground glow (foreshortened) so the token pops against terrain.
+    const halo = this.add.graphics();
+    halo.fillStyle(teamColor, 0.26);
+    halo.fillEllipse(0, 0, s * 1.1, s * 1.1 * tilt);
+    halo.fillStyle(teamColor, 0.14);
+    halo.fillEllipse(0, 0, s * 1.5, s * 1.5 * tilt);
+    container.add(halo);
+    this.tweens.add({
+      targets: halo,
+      alpha: { from: 0.5, to: 1 },
+      scale: { from: 0.85, to: 1.12 },
+      duration: 1100,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    // Contact shadow on the ground (shrinks while the pawn is airborne).
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.36);
+    shadow.fillEllipse(0, 1.5, s * 0.66, s * 0.66 * tilt);
+    container.add(shadow);
+
+    // The figure: everything that rises off the ground and hops as one.
+    const figure = this.add.container(0, 0);
+    const headY = -s * 0.66;
+    const headR = s * 0.33;
+    const bodyW = s * 0.34;
+    const bodyTop = headY + headR * 0.4;
+    const bodyBot = -s * 0.03;
+
+    const g = this.add.graphics();
+    // Base plate where the pawn meets the board.
+    g.fillStyle(darkCol, 1);
+    g.fillEllipse(0, bodyBot, s * 0.6, s * 0.6 * tilt);
+    g.fillStyle(this.mixColor(teamColor, 0x000000, 0.15), 1);
+    g.fillEllipse(0, bodyBot - 1, s * 0.46, s * 0.46 * tilt);
+    // Tapered body — shadow side full, lit side overlaid for volume.
+    g.fillStyle(darkCol, 1);
+    g.fillRoundedRect(-bodyW / 2, bodyTop, bodyW, bodyBot - bodyTop, bodyW * 0.45);
+    g.fillStyle(teamColor, 1);
+    g.fillRoundedRect(-bodyW / 2, bodyTop, bodyW * 0.6, bodyBot - bodyTop, bodyW * 0.45 * 0.6);
+    // Head disc (number holder): dark backing + body + sheen + inner + ring.
+    g.fillStyle(0x0f172a, 0.92);
+    g.fillCircle(0, headY + 1.5, headR + 1.5);
+    g.fillStyle(teamColor, 1);
+    g.fillCircle(0, headY, headR);
+    g.fillStyle(lightCol, 0.55);
+    g.fillCircle(-headR * 0.3, headY - headR * 0.3, headR * 0.4);
+    g.fillStyle(0x0f172a, 0.85);
+    g.fillCircle(0, headY, headR * 0.68);
+    g.lineStyle(2.2, 0xffffff, 0.95);
+    g.strokeCircle(0, headY, headR);
+    figure.add(g);
+
+    const numberText = this.add
+      .text(0, headY, player.number.toString(), {
+        fontSize: `${Math.max(10, Math.round(headR * 1.05))}px`,
+        color: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#020617",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5);
+    figure.add(numberText);
+
+    const hero = this.heroes.find((h) => h.ownerId === player.id);
+    const heroClass = hero ? heroClasses[hero.classId] : null;
+    if (hero && heroClass) {
+      const hx = headR * 0.95;
+      const hy = headY - headR * 0.95;
+      const heroColor = this.heroClassColor(hero.classId);
+      const heroHealth = Phaser.Math.Clamp(hero.hp / Math.max(hero.maxHp, 1), 0, 1);
+      const badge = this.add.graphics();
+      badge.fillStyle(0x020617, 0.9);
+      badge.fillCircle(hx, hy, 10);
+      badge.fillStyle(heroColor, 0.95);
+      badge.fillCircle(hx, hy, 7);
+      badge.lineStyle(2, 0xffffff, 0.9);
+      badge.beginPath();
+      badge.arc(hx, hy, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * heroHealth, false);
+      badge.strokePath();
+      figure.add(badge);
+      const heroText = this.add
+        .text(hx, hy, heroClass.icon, {
+          fontSize: "11px",
+          stroke: "#020617",
+          strokeThickness: 2,
+        })
+        .setOrigin(0.5);
+      figure.add(heroText);
+    }
+
+    container.add(figure);
+    container.setData("anim", [halo, shadow, figure, numberText]);
+
+    if (movedFrom) {
+      this.animateTokenHop(container, figure, shadow, numberText, teamColor, movedFrom, cx, cy);
+    }
+
+    return container;
+  }
+
+  /**
+   * Hop a token from `from` to its resting (cx,cy): the container slides along
+   * the ground while the figure arcs up and back down (a parabola), with a
+   * shrinking shadow, a landing squash, a number pop and a dust ring.
+   */
+  private animateTokenHop(
+    container: Phaser.GameObjects.Container,
+    figure: Phaser.GameObjects.Container,
+    shadow: Phaser.GameObjects.Graphics,
+    numberText: Phaser.GameObjects.Text,
+    teamColor: number,
+    from: { x: number; y: number },
+    cx: number,
+    cy: number
+  ): void {
+    const duration = 460;
+    const hopHeight = this.hexSize * 1.1;
+
+    container.setPosition(from.x, from.y);
+    this.tweens.add({ targets: container, x: cx, y: cy, duration, ease: "Sine.easeInOut" });
+
+    // Arc up then back down — yoyo makes the symmetric parabola.
+    this.tweens.add({
+      targets: figure,
+      y: -hopHeight,
+      duration: duration / 2,
+      ease: "Quad.easeOut",
+      yoyo: true,
+    });
+    // Shadow shrinks/fades while the pawn is high.
+    this.tweens.add({
+      targets: shadow,
+      scale: { from: 1, to: 0.6 },
+      alpha: { from: 0.36, to: 0.2 },
+      duration: duration / 2,
+      ease: "Quad.easeOut",
+      yoyo: true,
+    });
+    // Landing squash as it touches down.
+    this.tweens.add({
+      targets: figure,
+      scaleX: { from: 1, to: 1.18 },
+      scaleY: { from: 1, to: 0.82 },
+      delay: duration - 45,
+      duration: 95,
+      yoyo: true,
+      ease: "Quad.easeOut",
+    });
+    // Number pop on arrival.
+    this.tweens.add({
+      targets: numberText,
+      scale: { from: 1, to: 1.3 },
+      delay: duration - 70,
+      duration: 130,
+      yoyo: true,
+      ease: "Quad.easeOut",
+    });
+    // Foreshortened dust ring at the destination.
+    const tilt = isTacticalGrid ? TACTICAL_TILT_Y : 1;
+    const dust = this.add.graphics();
+    dust.lineStyle(3, teamColor, 0.85);
+    dust.strokeEllipse(0, 0, this.hexSize * 0.5, this.hexSize * 0.5 * tilt);
+    dust.setPosition(cx, cy);
+    dust.setDepth(GameConfig.rendering.playerNumberDepth - 1);
+    dust.setScale(0.4).setAlpha(0);
+    this.tweens.add({
+      targets: dust,
+      delay: duration - 60,
+      scale: 2.4,
+      alpha: { from: 0.9, to: 0 },
+      duration: 460,
+      ease: "Cubic.easeOut",
+      onComplete: () => dust.destroy(),
+    });
+  }
+
+  /** Kill a token's animations and destroy it (and its children). */
+  private destroyPlayerToken(container: Phaser.GameObjects.Container): void {
+    const anim =
+      (container.getData("anim") as Phaser.GameObjects.GameObject[] | undefined) ?? [];
+    anim.forEach((t) => this.tweens.killTweensOf(t));
+    this.tweens.killTweensOf(container);
+    container.destroy(true);
   }
 
   private _redrawTileGraphics(
@@ -458,6 +566,15 @@ export class GameScene extends Phaser.Scene {
     const baseColor = Phaser.Display.Color.HexStringToColor(
       terrain.color
     ).color;
+
+    // Tactical tiles are static slabs: the photo top + shared highlight overlay
+    // handle terrain detail and hover/select, so the base graphics just draws
+    // the extruded walls (+ a colour fallback top under the photo).
+    if (isTacticalGrid) {
+      this.drawHex(graphics, baseColor, terrain, 0x0f172a, 2, 0.85);
+      graphics.setDepth(Math.round(y + GameConfig.rendering.tileDepthOffset));
+      return;
+    }
 
     // Determine stroke style based on state
     let strokeColor = 0x0f172a;
@@ -502,6 +619,17 @@ export class GameScene extends Phaser.Scene {
     if (isIsometricGrid) {
       // Draw true isometric hex with 3D depth
       return this.drawIsometricHex(
+        graphics,
+        baseColor,
+        strokeColor,
+        strokeWidth,
+        strokeAlpha
+      );
+    }
+
+    if (isTacticalGrid) {
+      // Foreshortened slab tile with extruded front walls (tilted tactical map).
+      return this.drawTacticalHex(
         graphics,
         baseColor,
         strokeColor,
@@ -992,13 +1120,245 @@ export class GameScene extends Phaser.Scene {
 
   }
 
+  /**
+   * Tactical tile: a foreshortened pointy-top hex extruded into a slab so the
+   * board reads as a tilted 3D field. getHexPoints already returns the squashed
+   * outline; we draw the camera-facing front walls below it, then the lit top
+   * face. Per-tile depth sorting (by projected Y) makes near slabs occlude the
+   * front walls of the row behind — the correct tilted-board look.
+   *
+   * Pointy-top corner indices (i*60°+30°): 0=lower-right, 1=bottom, 2=lower-left,
+   * 3=upper-left, 4=top, 5=upper-right. The lower silhouette (2→1→0) faces us.
+   */
+  private drawTacticalHex(
+    graphics: Phaser.GameObjects.Graphics,
+    baseColor: number,
+    strokeColor: number,
+    strokeWidth: number,
+    strokeAlpha: number
+  ) {
+    const points = getHexPoints(0, 0, this.hexSize);
+    const wallHeight = this.hexSize * 0.42;
+
+    // Soft contact shadow pooled under the slab grounds it on the board.
+    graphics.fillStyle(0x020617, 0.28);
+    graphics.beginPath();
+    graphics.moveTo(points[2].x - 2, points[2].y + wallHeight);
+    graphics.lineTo(points[1].x, points[1].y + wallHeight + 3);
+    graphics.lineTo(points[0].x + 2, points[0].y + wallHeight);
+    graphics.lineTo(points[0].x + 2, points[0].y + wallHeight + 4);
+    graphics.lineTo(points[1].x, points[1].y + wallHeight + 7);
+    graphics.lineTo(points[2].x - 2, points[2].y + wallHeight + 4);
+    graphics.closePath();
+    graphics.fillPath();
+
+    // Front walls, split left/right so directional light gives them volume.
+    const leftWall = this.mixColor(baseColor, 0x000000, 0.52);
+    const rightWall = this.mixColor(baseColor, 0x000000, 0.36);
+    graphics.fillStyle(leftWall, 1);
+    this.fillExtrudedBand(graphics, [points[3], points[2], points[1]], wallHeight);
+    graphics.fillStyle(rightWall, 1);
+    this.fillExtrudedBand(graphics, [points[1], points[0], points[5]], wallHeight);
+
+    // A darker base line along the very bottom edge seats the slab.
+    graphics.lineStyle(1.5, this.mixColor(baseColor, 0x000000, 0.62), 0.6);
+    graphics.beginPath();
+    graphics.moveTo(points[2].x, points[2].y + wallHeight);
+    graphics.lineTo(points[1].x, points[1].y + wallHeight);
+    graphics.lineTo(points[0].x, points[0].y + wallHeight);
+    graphics.strokePath();
+
+    // Lit top face — top-lit gradient so the surface catches the light.
+    graphics.fillGradientStyle(
+      this.mixColor(baseColor, 0xffffff, 0.2),
+      this.mixColor(baseColor, 0xffffff, 0.14),
+      this.mixColor(baseColor, 0x000000, 0.14),
+      this.mixColor(baseColor, 0x000000, 0.08),
+      1,
+      1,
+      1,
+      1
+    );
+    this.tracePolygon(graphics, points);
+    graphics.fillPath();
+
+    // Top-face outline for crisp tile separation.
+    graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha * 0.85);
+    this.tracePolygon(graphics, points);
+    graphics.strokePath();
+
+    // Bright rim on the top-back edges sells the catch of light.
+    graphics.lineStyle(1.6, this.mixColor(baseColor, 0xffffff, 0.4), 0.4);
+    graphics.beginPath();
+    graphics.moveTo(points[3].x, points[3].y);
+    graphics.lineTo(points[4].x, points[4].y);
+    graphics.lineTo(points[5].x, points[5].y);
+    graphics.strokePath();
+  }
+
+  /**
+   * Fill a wall quad strip by extruding a top edge (a run of outline points)
+   * straight down by `height`. Used to build the camera-facing slab faces.
+   */
+  private fillExtrudedBand(
+    graphics: Phaser.GameObjects.Graphics,
+    topEdge: Phaser.Types.Math.Vector2Like[],
+    height: number
+  ) {
+    graphics.beginPath();
+    graphics.moveTo(topEdge[0].x as number, topEdge[0].y as number);
+    for (let i = 1; i < topEdge.length; i++) {
+      graphics.lineTo(topEdge[i].x as number, topEdge[i].y as number);
+    }
+    for (let i = topEdge.length - 1; i >= 0; i--) {
+      graphics.lineTo(topEdge[i].x as number, (topEdge[i].y as number) + height);
+    }
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  /** Trace a closed polygon path from a list of points (no fill/stroke). */
+  private tracePolygon(
+    graphics: Phaser.GameObjects.Graphics,
+    pts: Phaser.Types.Math.Vector2Like[]
+  ) {
+    graphics.beginPath();
+    graphics.moveTo(pts[0].x as number, pts[0].y as number);
+    for (let i = 1; i < pts.length; i++) {
+      graphics.lineTo(pts[i].x as number, pts[i].y as number);
+    }
+    graphics.closePath();
+  }
+
+  /** On-screen footprint of a tactical hex top face (foreshortened bounding box). */
+  private get hexTexWidth(): number {
+    return Math.sqrt(3) * this.hexSize;
+  }
+  private get hexTexHeight(): number {
+    return 2 * this.hexSize * TACTICAL_TILT_Y;
+  }
+
+  /**
+   * Bake each loaded terrain artwork into a hex-masked, foreshortened tile
+   * texture once at startup. We sample the dense centre of the isometric
+   * diamond (avoiding its transparent corners / raised features), clip it to
+   * the tactical hex silhouette, and bake in a soft top-light/bottom-shade so
+   * the slab top reads with form. Supersampled so it stays crisp when zoomed.
+   */
+  private bakeTerrainTextures(): void {
+    if (!isTacticalGrid) return;
+
+    const ss = 4; // supersample factor for crispness up to max zoom
+    const size = this.hexSize * ss;
+    const w = Math.ceil(Math.sqrt(3) * size);
+    const h = Math.ceil(2 * size * TACTICAL_TILT_Y);
+
+    (Object.keys(terrainTextureSources) as TerrainType[]).forEach((terrain) => {
+      let count = 0;
+      terrainTextureSources[terrain].forEach((_url, variant) => {
+        const tileKey = terrainTileKey(terrain, variant);
+        if (this.textures.exists(tileKey)) {
+          count++;
+          return;
+        }
+        const srcKey = terrainSourceKey(terrain, variant);
+        if (!this.textures.exists(srcKey)) return;
+        const src = this.textures.get(srcKey).getSourceImage() as
+          | HTMLImageElement
+          | HTMLCanvasElement;
+        const sw = (src as HTMLImageElement).naturalWidth || src.width;
+        const sh = (src as HTMLImageElement).naturalHeight || src.height;
+        if (!sw || !sh) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        // Clip to the foreshortened hex silhouette.
+        const pts = getHexPoints(w / 2, h / 2, size);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x as number, pts[0].y as number);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x as number, pts[i].y as number);
+        }
+        ctx.closePath();
+        ctx.clip();
+
+        // Cover the hex box with the central crop of the source art.
+        const cropW = sw * TERRAIN_SAMPLE_SCALE;
+        const cropH = sh * TERRAIN_SAMPLE_SCALE;
+        const sx = (sw - cropW) / 2;
+        const sy = (sh - cropH) / 2;
+        const scale = Math.max(w / cropW, h / cropH);
+        const dw = cropW * scale;
+        const dh = cropH * scale;
+        ctx.drawImage(src, sx, sy, cropW, cropH, (w - dw) / 2, (h - dh) / 2, dw, dh);
+
+        // Directional light: lit toward the back, shaded toward the front edge.
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, "rgba(255,255,255,0.16)");
+        grad.addColorStop(0.5, "rgba(255,255,255,0)");
+        grad.addColorStop(1, "rgba(2,6,23,0.26)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+
+        this.textures.addCanvas(tileKey, canvas);
+        count++;
+      });
+      this.terrainVariantCounts[terrain] = count;
+    });
+  }
+
+  /** Pick a stable per-tile texture variant so same-terrain tiles vary. */
+  private pickTerrainVariant(tile: HexTile): number {
+    const count = this.terrainVariantCounts[tile.terrain] ?? 0;
+    if (count <= 1) return 0;
+    return Math.floor(this.tileNoise(tile, 991) * count) % count;
+  }
+
+  /**
+   * Redraw the shared hover/select overlay: a bold gold ring for the selected
+   * tile and a soft white ring for the hovered one, in world space above the
+   * textured slabs.
+   */
+  private updateHighlight(): void {
+    const g = this.highlightGraphics;
+    if (!g) return;
+    g.clear();
+
+    const drawRing = (coords: CubeCoords, selected: boolean) => {
+      const pixel = cubeToPixel(coords, this.hexSize);
+      const pts = getHexPoints(pixel.x, pixel.y, this.hexSize + (selected ? 3 : 2));
+      g.lineStyle(8, selected ? 0xfacc15 : 0xffffff, selected ? 0.42 : 0.18);
+      this.tracePolygon(g, pts);
+      g.strokePath();
+      g.lineStyle(selected ? 3 : 2, selected ? 0xffff00 : 0xffffff, selected ? 1 : 0.7);
+      this.tracePolygon(g, pts);
+      g.strokePath();
+    };
+
+    if (
+      this.hoveredTile &&
+      !(this.selectedTile && coordsEqual(this.hoveredTile, this.selectedTile))
+    ) {
+      drawRing(this.hoveredTile, false);
+    }
+    if (this.selectedTile) {
+      drawRing(this.selectedTile, true);
+    }
+  }
+
   private renderGrid() {
     if (!this.gridGraphics) {
       return;
     }
 
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1.5, 0xe2e8f0, isIsometricGrid ? 0.34 : 0.42);
+    this.gridGraphics.lineStyle(1.5, 0xe2e8f0, isIsometricGrid || isTacticalGrid ? 0.3 : 0.42);
     this.gridGraphics.setDepth(GameConfig.rendering.terrainIconDepth - 5);
 
     // Get an array of [key, tile], sort by depth
@@ -1030,6 +1390,14 @@ export class GameScene extends Phaser.Scene {
 
     if (!tileData) return;
 
+    // Tactical tiles use the shared highlight overlay (the photo top stays put).
+    if (isTacticalGrid) {
+      this.selectedTile = coords;
+      this.updateHighlight();
+      this.onTileClick?.(coords);
+      return;
+    }
+
     // Clear previous selection
     if (this.selectedTile) {
       const prevKey = coordsToKey(this.selectedTile);
@@ -1054,26 +1422,14 @@ export class GameScene extends Phaser.Scene {
     this.tiles.forEach((tile) => tile.destroy());
     this.tiles.clear();
 
+    this.tileTerrainSprites.forEach((sprite) => sprite.destroy());
+    this.tileTerrainSprites.clear();
+
     this.tileTerrainIcons.forEach((icon) => icon.destroy());
     this.tileTerrainIcons.clear();
 
-    this.playerNumbers.forEach((text) => text.destroy());
-    this.playerNumbers.clear();
-
-    this.playerMarkers.forEach((marker) => marker.destroy());
-    this.playerMarkers.clear();
-
-    this.playerHalos.forEach((halo) => {
-      this.tweens.killTweensOf(halo);
-      halo.destroy();
-    });
-    this.playerHalos.clear();
-
-    this.heroMarkers.forEach((text) => text.destroy());
-    this.heroMarkers.clear();
-
-    this.heroMarkerBadges.forEach((badge) => badge.destroy());
-    this.heroMarkerBadges.clear();
+    this.playerTokens.forEach((token) => this.destroyPlayerToken(token));
+    this.playerTokens.clear();
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
@@ -1260,6 +1616,11 @@ export class GameScene extends Phaser.Scene {
     if (this.gridGraphics) {
       this.gridGraphics.destroy();
     }
+    if (this.highlightGraphics) {
+      this.highlightGraphics.destroy();
+      this.highlightGraphics = undefined;
+    }
+    this.hoveredTile = null;
 
     if (this.ambientTween) {
       this.ambientTween.stop();

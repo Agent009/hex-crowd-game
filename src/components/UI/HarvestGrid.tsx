@@ -346,7 +346,7 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
 
                   return (
                     <div
-                      key={resourceData.id}
+                      key={`${resourceData.id}_${index}`}
                       className={`flex items-center justify-between p-2 rounded transition-colors ${
                         canHarvest 
                           ? 'bg-slate-600 hover:bg-slate-500 cursor-pointer' 

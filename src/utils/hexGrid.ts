@@ -29,11 +29,19 @@ export interface HexTile {
   isActive?: boolean; // Can this tile be harvested from
 }
 
-export type GridSystem = "topDown" | "isometric";
-export const DEFAULT_GRID_SYSTEM: GridSystem = "topDown";
+export type GridSystem = "topDown" | "isometric" | "tactical";
+export const DEFAULT_GRID_SYSTEM: GridSystem = "tactical";
 export const gridSystem: GridSystem = import.meta.env.VITE_GRID_SYSTEM ? import.meta.env.VITE_GRID_SYSTEM as GridSystem : DEFAULT_GRID_SYSTEM;
 export const isTopDownGrid = gridSystem === "topDown";
-export const isIsometricGrid = !isTopDownGrid;
+export const isIsometricGrid = gridSystem === "isometric";
+export const isTacticalGrid = gridSystem === "tactical";
+
+// Vertical foreshortening for the tilted "tactical" board — simulates a raised
+// camera looking across the field instead of straight down. Applied uniformly
+// to the Y axis of the top-down layout, which keeps the hexes perfectly
+// tessellated (row pitch and hex height scale together) while reading as a
+// receding 3D plane. Lower = steeper tilt; 1.0 = flat overhead.
+export const TACTICAL_TILT_Y = 0.62;
 // Env vars are always strings at runtime; `Number()` coerces it so arithmetic
 // like `hexSize + 4` adds instead of string-concatenating (which produced a
 // "324"px halo spanning the whole board).
@@ -93,6 +101,12 @@ export const cubeToPixel = (coords: CubeCoords, size: number): Point => {
     return { x: flatX, y: flatY };
   }
 
+  if (isTacticalGrid) {
+    // Tilt the flat board away from the camera: squash Y only. Uniform scaling
+    // preserves the tessellation, so neighbours stay edge-to-edge.
+    return { x: flatX, y: flatY * TACTICAL_TILT_Y };
+  }
+
   // 2. 2D flat -> isometric projection
   // Turn that 2D grid into true-iso:
   const isoX = flatX - flatY;
@@ -103,9 +117,11 @@ export const cubeToPixel = (coords: CubeCoords, size: number): Point => {
 
 // Convert pixel position to cube coordinates
 export const pixelToCube = (point: Point, size: number): CubeCoords => {
-  if (isTopDownGrid) {
-    const q = (Math.sqrt(3)/3 * point.x - 1/3 * point.y) / size;
-    const r = (2/3 * point.y) / size;
+  if (isTopDownGrid || isTacticalGrid) {
+    // Reverse the tactical tilt before the flat inverse transform.
+    const py = isTacticalGrid ? point.y / TACTICAL_TILT_Y : point.y;
+    const q = (Math.sqrt(3)/3 * point.x - 1/3 * py) / size;
+    const r = (2/3 * py) / size;
     return cubeRound({ q, r, s: -q - r });
   }
 
@@ -146,19 +162,23 @@ export const cubeRound = (coords: CubeCoords): CubeCoords => {
 };
 
 export const getHexPoints = (x: number, y: number, size: number): Phaser.Types.Math.Vector2Like[] => {
-  if (isTopDownGrid) {
-    const points: Phaser.Types.Math.Vector2Like[] = [];
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI / 3) * i + Math.PI / 6; // Pointy-top orientation
-      points.push({
-        x: x + size * Math.cos(angle),
-        y: y + size * Math.sin(angle)
-      });
-    }
-    return points;
+  if (isIsometricGrid) {
+    return getIsometricHexPoints(x, y, size);
   }
 
-  return getIsometricHexPoints(x, y, size);
+  // Top-down (tilt = 1) and tactical (tilt = TACTICAL_TILT_Y) share the same
+  // pointy-top outline; tactical just squashes it vertically to match the
+  // foreshortened board.
+  const tilt = isTacticalGrid ? TACTICAL_TILT_Y : 1;
+  const points: Phaser.Types.Math.Vector2Like[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i + Math.PI / 6; // Pointy-top orientation
+    points.push({
+      x: x + size * Math.cos(angle),
+      y: y + size * Math.sin(angle) * tilt
+    });
+  }
+  return points;
 };
 
 export const getIsometricHexPoints = (x: number, y: number, size: number): Phaser.Types.Math.Vector2Like[] => {
