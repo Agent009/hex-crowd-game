@@ -20,11 +20,11 @@ import {GameScene} from "../../game/GameEngine";
 import {getPhaserGame} from "../../game/phaserRef";
 
 interface HexActionMenuProps {
-  onOpenHarvestGrid: (tab: 'resources' | 'items' | 'crafting' | 'trade') => void;
+  onOpenTileAction: (mode: 'gather' | 'craft') => void;
 }
 
 export const HexActionMenu: React.FC<HexActionMenuProps> = ({
-                                                              onOpenHarvestGrid
+                                                              onOpenTileAction
                                                             }) => {
   const dispatch = useDispatch();
   const { isMultiplayer, sendMove, sendInitiateCombat } = useMultiplayer();
@@ -49,11 +49,34 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
   // re-binding the listener on every render. Each entry's `run` performs the
   // action and closes/keeps the menu as appropriate.
   const actionsRef = useRef<Array<{ id: string; enabled: boolean; run: () => void }>>([]);
+  // The positioned wrapper, plus a ref to the latest screen-position function so
+  // an animation-frame loop can keep the menu glued to the tile while the camera
+  // zooms/pans (those don't trigger React re-renders).
+  const menuRef = useRef<HTMLDivElement>(null);
+  const posFnRef = useRef<() => { x: number; y: number }>();
 
   // Reset focus whenever the selected tile changes (new menu instance).
   useEffect(() => {
     setFocusedId(null);
   }, [selectedTile]);
+
+  // Keep the menu pinned to its tile every frame while open, so zooming and
+  // panning the board move the radial with the selected hex.
+  useEffect(() => {
+    if (!menuOpen) return;
+    let raf = 0;
+    const tick = () => {
+      const el = menuRef.current;
+      const pos = posFnRef.current?.();
+      if (el && pos) {
+        el.style.left = `${pos.x}px`;
+        el.style.top = `${pos.y}px`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [menuOpen]);
 
   // Tab / Shift+Tab to cycle items, Enter to confirm, Backspace to cancel.
   useEffect(() => {
@@ -207,7 +230,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: enableHarvestResource ? 'Harvest Resource (1 AP)' : 'Harvest Resource (need 1 AP)',
       color: 'bg-green-600 hover:bg-green-700',
       enabled: enableHarvestResource,
-      perform: () => onOpenHarvestGrid('resources'),
+      perform: () => onOpenTileAction('gather'),
       keepMenuActive: true,
       angle: -30 // Top right
     },
@@ -217,7 +240,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: enableHarvestItem ? 'Harvest Item (3 AP)' : 'Harvest Item (need 3 AP)',
       color: 'bg-purple-600 hover:bg-purple-700',
       enabled: enableHarvestItem,
-      perform: () => onOpenHarvestGrid('items'),
+      perform: () => onOpenTileAction('gather'),
       keepMenuActive: true,
       angle: 30 // Bottom right
     },
@@ -227,7 +250,7 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
       label: canCraft() ? 'Craft Item' : 'Cannot Craft Item',
       color: 'bg-orange-600 hover:bg-orange-700',
       enabled: canCraft(),
-      perform: () => onOpenHarvestGrid('crafting'),
+      perform: () => onOpenTileAction('craft'),
       keepMenuActive: true,
       angle: 90 // Bottom
     },
@@ -291,125 +314,124 @@ export const HexActionMenu: React.FC<HexActionMenuProps> = ({
     // that doesn't rely on the container's center
     const worldPixel = cubeToPixel(selectedTile, DEFAULT_HEX_SIZE);
 
-    let cameraX = 0;
-    let cameraY = 0;
-    let zoom = 1;
-
-    if (phaserGame?.scene?.scenes?.[0]?.cameras?.main) {
-      const camera = phaserGame.scene.scenes[0].cameras.main;
-      cameraX = camera.scrollX || 0;
-      cameraY = camera.scrollY || 0;
-      zoom = camera.zoom || 1;
-    }
-
-    // Calculate screen position without assuming the canvas is centered
     const canvas = gameContainer.querySelector('canvas');
     const canvasRect = canvas ? canvas.getBoundingClientRect() : containerRect;
 
-    const screenX = canvasRect.left + ((worldPixel.x - cameraX) * zoom);
-    const screenY = canvasRect.top + ((worldPixel.y - cameraY) * zoom);
+    const camera = phaserGame?.scene?.scenes?.[0]?.cameras?.main;
+    if (camera) {
+      // Same zoom-aware transform as the scene helper above.
+      const zoom = camera.zoom || 1;
+      const screenX = canvasRect.left + (worldPixel.x - camera.worldView.x) * zoom;
+      const screenY = canvasRect.top + (worldPixel.y - camera.worldView.y) * zoom;
+      return { x: screenX, y: screenY };
+    }
 
-    return {x: screenX, y: screenY};
+    return { x: canvasRect.left + worldPixel.x, y: canvasRect.top + worldPixel.y };
   };
+
+  // Expose the latest position fn to the animation-frame loop above.
+  posFnRef.current = getScreenPosition;
 
   const screenPosition = getScreenPosition();
   const menuRadius = 80;
 
-  const getActionPosition = (angle: number) => {
+  // Buttons/lines are positioned relative to the wrapper's origin (the tile),
+  // so the rAF loop only has to move the wrapper to keep everything aligned.
+  const offsetFor = (angle: number) => {
     const radian = (angle * Math.PI) / 180;
-    const x = screenPosition.x + Math.cos(radian) * menuRadius;
-    const y = screenPosition.y + Math.sin(radian) * menuRadius;
-    return {x, y};
+    return { x: Math.cos(radian) * menuRadius, y: Math.sin(radian) * menuRadius };
   };
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[45]">
-      {/* Center indicator */}
       <div
-        className="absolute w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse"
-        style={{
-          left: screenPosition.x,
-          top: screenPosition.y,
-        }}
-      />
-
-      {/* Action buttons */}
-      {actions.map((action) => {
-        const position = getActionPosition(action.angle);
-        const Icon = action.icon;
-        const isFocused = focusedId === action.id && action.enabled;
-
-        return (
-          <div
-            key={action.id}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto animate-fade-in"
-            style={{
-              left: position.x,
-              top: position.y,
-              animationDelay: `${actions.indexOf(action) * 50}ms`
-            }}
-          >
-            <button
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                activate(action);
-              }}
-              disabled={!action.enabled}
-              aria-label={action.label}
-              className={`
-                w-14 h-14 rounded-full shadow-xl border-2 transition-all duration-200
-                flex items-center justify-center text-white font-bold
-                ${isFocused ? 'border-yellow-300 ring-4 ring-yellow-300/70 scale-110' : 'border-white'}
-                ${action.enabled
-                ? `${action.color} hover:scale-110 active:scale-95`
-                : 'bg-gray-500 opacity-50 cursor-not-allowed'
-              }
-              `}
-              title={action.label}
-            >
-              <Icon className="w-6 h-6"/>
-            </button>
-
-            {/* Tooltip */}
-            <div
-              className="absolute bg-black text-white px-2 py-1 rounded text-xs whitespace-nowrap z-[50] opacity-0 hover:opacity-100 transition-opacity pointer-events-none"
-              style={{
-                bottom: '120%',
-                left: '50%',
-                transform: 'translateX(-50%)'
-              }}>
-              {action.label}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Connection lines */}
-      <svg
-        className="absolute inset-0 pointer-events-none"
-        style={{width: '100%', height: '100%'}}
+        ref={menuRef}
+        className="absolute"
+        style={{ left: screenPosition.x, top: screenPosition.y, width: 0, height: 0 }}
       >
-        {actions.map((action) => {
-          if (!action.enabled) return null;
+        {/* Connection lines (origin = wrapper = tile centre) */}
+        <svg
+          className="absolute pointer-events-none"
+          style={{ left: -200, top: -200, width: 400, height: 400, overflow: 'visible' }}
+          viewBox="-200 -200 400 400"
+        >
+          {actions.map((action) => {
+            if (!action.enabled) return null;
+            const o = offsetFor(action.angle);
+            return (
+              <line
+                key={`line-${action.id}`}
+                x1={0}
+                y1={0}
+                x2={o.x}
+                y2={o.y}
+                stroke="rgba(255, 255, 255, 0.5)"
+                strokeWidth="2"
+                strokeDasharray="2,2"
+                className="animate-fade-in"
+              />
+            );
+          })}
+        </svg>
 
-          const position = getActionPosition(action.angle);
+        {/* Center indicator */}
+        <div
+          className="absolute w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse"
+          style={{ left: 0, top: 0 }}
+        />
+
+        {/* Action buttons */}
+        {actions.map((action) => {
+          const o = offsetFor(action.angle);
+          const Icon = action.icon;
+          const isFocused = focusedId === action.id && action.enabled;
 
           return (
-            <line
-              key={`line-${action.id}`}
-              x1={screenPosition.x}
-              y1={screenPosition.y}
-              x2={position.x}
-              y2={position.y}
-              stroke="rgba(255, 255, 255, 0.5)"
-              strokeWidth="2"
-              strokeDasharray="2,2"
-              className="animate-fade-in"
-            />
+            <div
+              key={action.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto animate-fade-in"
+              style={{
+                left: o.x,
+                top: o.y,
+                animationDelay: `${actions.indexOf(action) * 50}ms`
+              }}
+            >
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  activate(action);
+                }}
+                disabled={!action.enabled}
+                aria-label={action.label}
+                className={`
+                  w-14 h-14 rounded-full shadow-xl border-2 transition-all duration-200
+                  flex items-center justify-center text-white font-bold
+                  ${isFocused ? 'border-yellow-300 ring-4 ring-yellow-300/70 scale-110' : 'border-white'}
+                  ${action.enabled
+                  ? `${action.color} hover:scale-110 active:scale-95`
+                  : 'bg-gray-500 opacity-50 cursor-not-allowed'
+                }
+                `}
+                title={action.label}
+              >
+                <Icon className="w-6 h-6"/>
+              </button>
+
+              {/* Tooltip */}
+              <div
+                className="absolute bg-black text-white px-2 py-1 rounded text-xs whitespace-nowrap z-[50] opacity-0 hover:opacity-100 transition-opacity pointer-events-none"
+                style={{
+                  bottom: '120%',
+                  left: '50%',
+                  transform: 'translateX(-50%)'
+                }}>
+                {action.label}
+              </div>
+            </div>
           );
         })}
-      </svg>
+      </div>
     </div>
   );
 };

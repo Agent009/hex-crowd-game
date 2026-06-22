@@ -31,6 +31,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
   // without the VFX effect re-running every time the board changes.
   const tilesRef = useRef(tiles);
   tilesRef.current = tiles;
+  // Last-known active state per tile, to detect active→inactive transitions
+  // (e.g. a tile harvested dry) and play the depletion flip exactly once.
+  const prevActiveRef = useRef<Record<string, boolean>>({});
 
   // Memoized event handlers to prevent recreation on every render
   const handleTileClick = useCallback((coords: CubeCoords) => {
@@ -146,9 +149,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ className }) => {
 
   // Update tiles when Redux state changes
   useEffect(() => {
-    if (sceneRef.current && sceneRef.current.scene.isActive()) {
-      sceneRef.current.updateTiles(tiles);
+    const scene = sceneRef.current;
+    if (scene && scene.scene.isActive()) {
+      // Re-render first so the depleted face exists, then flip it into view.
+      scene.updateTiles(tiles);
+
+      const prev = prevActiveRef.current;
+      const isFirst = Object.keys(prev).length === 0;
+      if (!isFirst) {
+        Object.entries(tiles).forEach(([key, tile]) => {
+          const wasActive = prev[key];
+          const nowActive = tile.isActive !== false;
+          if (wasActive === true && !nowActive) {
+            scene.triggerTileFlip(tile.coords);
+          }
+        });
+      }
     }
+    // Snapshot active state for the next diff (also on first run / restore).
+    const snapshot: Record<string, boolean> = {};
+    Object.entries(tiles).forEach(([key, tile]) => {
+      snapshot[key] = tile.isActive !== false;
+    });
+    prevActiveRef.current = snapshot;
   }, [tiles]);
 
   useEffect(() => {

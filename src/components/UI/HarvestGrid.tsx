@@ -11,6 +11,7 @@ import {
   canCraftItem
 } from '../../data/harvestData';
 import { terrainData, TerrainType } from '../../data/gameData';
+import { resourceIcon, itemIcon } from '../../data/itemIcons';
 import { coordsToKey } from '../../utils/hexGrid';
 import {
   Package,
@@ -242,32 +243,8 @@ export const HarvestGrid: React.FC<HarvestGridProps> = ({
     }
   };
 
-  const renderResourceIcon = (resourceId: string) => {
-    const icons: { [key: string]: React.ReactNode } = {
-      cloth: '🧵',
-      wood: '🪵',
-      stone: '🪨',
-      water: '💧',
-      shard: '💎',
-      gems: '💎'
-    };
-    return icons[resourceId] || '📦';
-  };
-
-  const renderItemIcon = (itemId: string) => {
-    const icons: { [key: string]: React.ReactNode } = {
-      boat: '⛵',
-      camping_gear: '🏕️',
-      climbing_gear: '🧗',
-      cloak: '🧥',
-      survival_kit: '🎒',
-      terraform: '🌍',
-      leech: '🩸',
-      armageddon: '💥',
-      rejuvenate: '💚'
-    };
-    return icons[itemId] || '📦';
-  };
+  const renderResourceIcon = (resourceId: string) => resourceIcon(resourceId);
+  const renderItemIcon = (itemId: string) => itemIcon(itemId);
 
   const tabs = [
     { id: 'resources' as TabType, icon: Package, label: 'Resources', color: 'text-green-400' },

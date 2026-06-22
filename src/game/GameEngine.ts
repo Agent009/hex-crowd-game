@@ -29,9 +29,16 @@ import { GameConfig } from "./GameConfig";
 import { Hero } from "../store/types";
 import { heroClasses } from "../data/heroesData";
 
+// Depleted/inactive tile look: a desaturated slate tint multiplied over the
+// terrain photo plus reduced opacity reads clearly as "spent / not harvestable".
+const INACTIVE_TINT = 0x49506a;
+const INACTIVE_ALPHA = 0.78;
+
 export class GameScene extends Phaser.Scene {
   private tiles: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private tileTerrainSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+  // Active flip tweens per tile, so a re-render mid-flip can cancel cleanly.
+  private tileFlipTweens: Map<string, Phaser.Tweens.Tween> = new Map();
   private terrainVariantCounts: Partial<Record<TerrainType, number>> = {};
   private highlightGraphics?: Phaser.GameObjects.Graphics;
   private hoveredTile: CubeCoords | null = null;
@@ -215,6 +222,12 @@ export class GameScene extends Phaser.Scene {
       this.tiles.delete(key);
     }
 
+    const flipTween = this.tileFlipTweens.get(key);
+    if (flipTween) {
+      flipTween.stop();
+      this.tileFlipTweens.delete(key);
+    }
+
     const terrainSprite = this.tileTerrainSprites.get(key);
     if (terrainSprite) {
       terrainSprite.destroy();
@@ -260,7 +273,10 @@ export class GameScene extends Phaser.Scene {
           .setDisplaySize(this.hexTexWidth, this.hexTexHeight)
           .setDepth(Math.round(pixel.y + GameConfig.rendering.tileDepthOffset) + 0.3);
         // Dim inactive/non-harvestable tiles instead of the vector hatch overlay.
-        if (!active) sprite.setTint(0x5b6b86);
+        if (!active) {
+          sprite.setTint(INACTIVE_TINT);
+          sprite.setAlpha(INACTIVE_ALPHA);
+        }
         this.tileTerrainSprites.set(key, sprite);
       }
     }
@@ -387,8 +403,10 @@ export class GameScene extends Phaser.Scene {
     shadow.fillEllipse(0, 1.5, s * 0.66, s * 0.66 * tilt);
     container.add(shadow);
 
-    // The figure: everything that rises off the ground and hops as one.
+    // The figure hops as one (figure.y); an inner `bob` carries a gentle idle
+    // sway (bob.y) that composes with the hop instead of fighting it.
     const figure = this.add.container(0, 0);
+    const bob = this.add.container(0, 0);
     const headY = -s * 0.66;
     const headR = s * 0.33;
     const bodyW = s * 0.34;
@@ -417,7 +435,7 @@ export class GameScene extends Phaser.Scene {
     g.fillCircle(0, headY, headR * 0.68);
     g.lineStyle(2.2, 0xffffff, 0.95);
     g.strokeCircle(0, headY, headR);
-    figure.add(g);
+    bob.add(g);
 
     const numberText = this.add
       .text(0, headY, player.number.toString(), {
@@ -428,7 +446,7 @@ export class GameScene extends Phaser.Scene {
         strokeThickness: 3,
       })
       .setOrigin(0.5);
-    figure.add(numberText);
+    bob.add(numberText);
 
     const hero = this.heroes.find((h) => h.ownerId === player.id);
     const heroClass = hero ? heroClasses[hero.classId] : null;
@@ -446,7 +464,7 @@ export class GameScene extends Phaser.Scene {
       badge.beginPath();
       badge.arc(hx, hy, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * heroHealth, false);
       badge.strokePath();
-      figure.add(badge);
+      bob.add(badge);
       const heroText = this.add
         .text(hx, hy, heroClass.icon, {
           fontSize: "11px",
@@ -454,11 +472,25 @@ export class GameScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5);
-      figure.add(heroText);
+      bob.add(heroText);
     }
 
+    figure.add(bob);
     container.add(figure);
-    container.setData("anim", [halo, shadow, figure, numberText]);
+
+    // Gentle idle sway, desynced per player so the field doesn't bob in unison.
+    const bobPhase = (player.number % 6) * 140;
+    this.tweens.add({
+      targets: bob,
+      y: { from: 0, to: -s * 0.16 },
+      duration: 1500 + (player.number % 4) * 220,
+      delay: bobPhase,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    container.setData("anim", [halo, shadow, figure, bob, numberText]);
 
     if (movedFrom) {
       this.animateTokenHop(container, figure, shadow, numberText, teamColor, movedFrom, cx, cy);
@@ -571,7 +603,10 @@ export class GameScene extends Phaser.Scene {
     // handle terrain detail and hover/select, so the base graphics just draws
     // the extruded walls (+ a colour fallback top under the photo).
     if (isTacticalGrid) {
-      this.drawHex(graphics, baseColor, terrain, 0x0f172a, 2, 0.85);
+      // Dim the slab walls to match the depleted top when the tile is spent.
+      const active = tile.isActive !== false;
+      const slabColor = active ? baseColor : this.mixColor(baseColor, INACTIVE_TINT, 0.65);
+      this.drawHex(graphics, slabColor, terrain, 0x0f172a, 2, 0.85);
       graphics.setDepth(Math.round(y + GameConfig.rendering.tileDepthOffset));
       return;
     }
@@ -1419,6 +1454,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearTiles() {
+    this.tileFlipTweens.forEach((tween) => tween.stop());
+    this.tileFlipTweens.clear();
+
     this.tiles.forEach((tile) => tile.destroy());
     this.tiles.clear();
 
@@ -1569,6 +1607,71 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(180, 0.006);
   }
 
+  /**
+   * Flip a tile onto its "depleted" face when it becomes non-harvestable.
+   * The tile (slab + photo top) compresses to its edge — at which point the
+   * spent/dimmed face is revealed — then springs back, so the change of state
+   * reads as the tile physically turning over. By the time this runs the tile
+   * has already re-rendered dimmed; we briefly show the lit face during the
+   * first half so the active→depleted transition is visible.
+   */
+  public triggerTileFlip(coords: CubeCoords): void {
+    if (!isTacticalGrid) return;
+    const key = coordsToKey(coords);
+    const base = this.tiles.get(key);
+    if (!base) return;
+    const sprite = this.tileTerrainSprites.get(key);
+
+    // Cancel any in-flight flip for this tile.
+    this.tileFlipTweens.get(key)?.stop();
+    this.tileFlipTweens.delete(key);
+
+    const baseScaleY = base.scaleY || 1;
+    const spriteScaleY = sprite ? sprite.scaleY : 1;
+    const proxy = { f: 1 };
+
+    const alive = () => !!base.scene; // guard against destroy mid-flip
+
+    // First half: show the lit (active) face and flip down to the edge.
+    if (sprite) { sprite.clearTint(); sprite.setAlpha(1); }
+    const tween = this.tweens.add({
+      targets: proxy,
+      f: 0,
+      duration: 150,
+      ease: 'Quad.easeIn',
+      onUpdate: () => {
+        if (!alive()) return;
+        base.scaleY = baseScaleY * proxy.f;
+        if (sprite && sprite.scene) sprite.scaleY = spriteScaleY * proxy.f;
+      },
+      onComplete: () => {
+        if (!alive()) { this.tileFlipTweens.delete(key); return; }
+        // Edge reached — reveal the depleted face, then spring back up.
+        if (sprite && sprite.scene) { sprite.setTint(INACTIVE_TINT); sprite.setAlpha(INACTIVE_ALPHA); }
+        const back = this.tweens.add({
+          targets: proxy,
+          f: 1,
+          duration: 220,
+          ease: 'Back.easeOut',
+          onUpdate: () => {
+            if (!alive()) return;
+            base.scaleY = baseScaleY * proxy.f;
+            if (sprite && sprite.scene) sprite.scaleY = spriteScaleY * proxy.f;
+          },
+          onComplete: () => {
+            if (alive()) {
+              base.scaleY = baseScaleY;
+              if (sprite && sprite.scene) sprite.scaleY = spriteScaleY;
+            }
+            this.tileFlipTweens.delete(key);
+          },
+        });
+        this.tileFlipTweens.set(key, back);
+      },
+    });
+    this.tileFlipTweens.set(key, tween);
+  }
+
   // Method to update event handlers from React
   public updateEventHandlers(handlers: {
     onTileClick: (coords: CubeCoords) => void;
@@ -1590,9 +1693,12 @@ export class GameScene extends Phaser.Scene {
     const worldY = tile.y;
     const camera = this.cameras.main;
 
-    // Convert world position to screen position
-    const screenX = (worldX - camera.scrollX) * camera.zoom;
-    const screenY = (worldY - camera.scrollY) * camera.zoom;
+    // Convert world -> canvas-screen position. `worldView` is the world rect the
+    // camera currently shows (top-left already accounts for zoom-around-centre),
+    // so this stays correct at any zoom level — unlike `(world - scroll) * zoom`,
+    // which is only right at zoom = 1 and drifts as you zoom in/out.
+    const screenX = (worldX - camera.worldView.x) * camera.zoom;
+    const screenY = (worldY - camera.worldView.y) * camera.zoom;
 
     return { x: screenX, y: screenY };
   }

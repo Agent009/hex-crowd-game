@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store/store';
 import {
@@ -14,6 +14,8 @@ import { toggleGrid, togglePlayerNumbers } from '../../store/uiSlice';
 import { isTestMode } from '../../data/gameData';
 import { useMultiplayer } from '../../hooks/useMultiplayer';
 import { HarvestGrid } from './HarvestGrid';
+import { TileActionCard, TileActionMode } from './TileActionCard';
+import { TradeDock } from './TradeDock';
 import { StatusEffectsDisplay, PlayerStatusBar } from './StatusEffectsDisplay';
 import { NotificationSystem } from './NotificationSystem';
 import { HexActionMenu } from './HexActionMenu';
@@ -50,7 +52,8 @@ export const PartyGameHUD: React.FC = () => {
     roundNumber,
     playerStats,
     currentPhase,
-    phaseTimer
+    phaseTimer,
+    tradeProposals
   } = useSelector((state: RootState) => state.game);
   const { showGrid, showPlayerNumbers } = useSelector((state: RootState) => state.ui);
   const { tiles } = useSelector((state: RootState) => state.world);
@@ -61,9 +64,18 @@ export const PartyGameHUD: React.FC = () => {
   const [showHeroCommand, setShowHeroCommand] = useState(false);
   const [showTestControls, setShowTestControls] = useState(false);
   const [showTeamScores, setShowTeamScores] = useState(false);
-  const [harvestGridTab, setHarvestGridTab] = useState<'resources' | 'items' | 'crafting' | 'trade'>('resources');
+  // Contextual board-anchored docks (mutually exclusive) replacing the old
+  // full-height harvest panel for the core loop.
+  const [tileAction, setTileAction] = useState<TileActionMode | null>(null);
+  const [showTrade, setShowTrade] = useState(false);
 
   const currentPlayerStats = currentPlayer ? playerStats[currentPlayer.id] : null;
+
+  // Pending trade offers addressed to me — surfaced as a badge so they're
+  // noticed without opening anything.
+  const incomingOffers = tradeProposals.filter(
+    t => t.toPlayerId === currentPlayer?.id && t.status === 'pending'
+  ).length;
 
   useEffect(() => {
     if (isMultiplayer) return;
@@ -110,10 +122,32 @@ export const PartyGameHUD: React.FC = () => {
     dispatch(setCurrentPlayer({ playerId }));
   };
 
-  const handleOpenHarvestGrid = (tab: 'resources' | 'items' | 'crafting' | 'trade') => {
-    setHarvestGridTab(tab);
-    setShowHarvestGrid(true);
+  // Opening one dock closes the other (and the inventory panel) so only one
+  // surface ever sits over the board.
+  const handleOpenTileAction = (mode: TileActionMode) => {
+    setShowTrade(false);
+    setShowHarvestGrid(false);
+    setTileAction(mode);
   };
+
+  const toggleTrade = () => {
+    setShowTrade(prev => {
+      const next = !prev;
+      if (next) { setTileAction(null); setShowHarvestGrid(false); }
+      return next;
+    });
+  };
+
+  // Auto-surface the trade dock when the Bartering phase begins, so players
+  // don't have to discover it. Only fires on the transition into bartering.
+  const prevPhaseRef = useRef(currentPhase);
+  useEffect(() => {
+    if (currentPhase === 'bartering' && prevPhaseRef.current !== 'bartering') {
+      setShowTrade(true);
+      setTileAction(null);
+    }
+    prevPhaseRef.current = currentPhase;
+  }, [currentPhase]);
 
   // Get top teams by score
   const sortedTeams = [...teams]
@@ -267,17 +301,22 @@ export const PartyGameHUD: React.FC = () => {
           </button>
 
           <button
-            onClick={() => handleOpenHarvestGrid('trade')}
-            className={`p-2 rounded-lg transition-colors ${
-              currentPhase === 'bartering'
-                ? 'bg-teal-600 text-white animate-pulse'
-                : showHarvestGrid && harvestGridTab === 'trade'
-                  ? 'bg-teal-700 text-white'
+            onClick={toggleTrade}
+            className={`relative p-2 rounded-lg transition-colors ${
+              showTrade
+                ? 'bg-teal-600 text-white'
+                : currentPhase === 'bartering'
+                  ? 'bg-teal-700 text-white animate-pulse'
                   : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
             }`}
-            title="Open Trade Panel"
+            title="Bartering"
           >
             <ArrowLeftRight className="w-5 h-5" />
+            {incomingOffers > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold border border-slate-800">
+                {incomingOffers}
+              </span>
+            )}
           </button>
 
           <button
@@ -394,17 +433,28 @@ export const PartyGameHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* Harvest Grid */}
+      {/* Full inventory / overview (optional, opened from the toolbar) */}
       {showHarvestGrid && (
         <HarvestGrid
-          initialTab={harvestGridTab}
+          initialTab="resources"
           onClose={() => setShowHarvestGrid(false)}
         />
       )}
 
+      {/* Contextual gather/craft dock for the core loop */}
+      {tileAction && (
+        <TileActionCard
+          initialMode={tileAction}
+          onClose={() => setTileAction(null)}
+        />
+      )}
+
+      {/* Bartering dock */}
+      {showTrade && <TradeDock onClose={() => setShowTrade(false)} />}
+
       {/* Hex Action Menu */}
       <HexActionMenu
-        onOpenHarvestGrid={handleOpenHarvestGrid}
+        onOpenTileAction={handleOpenTileAction}
       />
 
       {showHeroCommand && (
