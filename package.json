@@ -7,11 +7,11 @@
     "lint:check": "eslint .",
     "lint": "eslint . --fix",
     "typecheck": "tsc --noEmit --pretty",
+    "check": "npm run typecheck && npm run lint && npm run test",
     "check:edge": "npx -y deno-bin@latest check supabase/functions/realtime-diagnostics/index.ts supabase/functions/session-authority/index.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check:full": "npm run check && npm run test:e2e",
-    "check": "npm run typecheck && npm run lint && npm run test",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
